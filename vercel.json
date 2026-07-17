@@ -1,12 +1,53 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
-  "trailingSlash": false,
+  "trailingSlash": true,
+  "rewrites": [
+    {
+      "source": "/fornecedores",
+      "destination": "https://painel-fornecedores-ability.vercel.app/"
+    },
+    {
+      "source": "/fornecedores/:path*",
+      "destination": "https://painel-fornecedores-ability.vercel.app/:path*"
+    },
+    {
+      "source": "/comparativo",
+      "destination": "https://comparativo-mu.vercel.app/"
+    },
+    {
+      "source": "/comparativo/:path*",
+      "destination": "https://comparativo-mu.vercel.app/:path*"
+    },
+    {
+      "source": "/contratos",
+      "destination": "https://ambiente-teste-contrato.vercel.app/"
+    },
+    {
+      "source": "/contratos/:path*",
+      "destination": "https://ambiente-teste-contrato.vercel.app/:path*"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        },
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
       ]
     }
   ]

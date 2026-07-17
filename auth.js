@@ -16,9 +16,14 @@ export async function initializeAuthPersistence() {
 }
 
 export async function login(email, password) {
-  const credential = await signInWithEmailAndPassword(auth, email, password);
   sessionStorage.setItem(SESSION_KEY, String(Date.now()));
-  return credential.user;
+  try {
+    const credential = await signInWithEmailAndPassword(auth, email, password);
+    return credential.user;
+  } catch (error) {
+    sessionStorage.removeItem(SESSION_KEY);
+    throw error;
+  }
 }
 
 export async function logout() {

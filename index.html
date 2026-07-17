@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0b1220">
-  <title>Portal Corporativo</title>
+  <title>Portal de Compras</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -28,7 +28,7 @@
 
     <div class="login-panel">
       <form id="loginForm" class="login-card">
-        <div class="mobile-brand"><div class="brand-mark small">AS</div><strong>Ability Suite</strong></div>
+        <div class="mobile-brand"><div class="brand-mark small">PC</div><strong>Portal de Compras</strong></div>
         <span class="eyebrow">ACESSO CORPORATIVO</span>
         <h2>Bem-vindo</h2>
         <p>Use seu e-mail corporativo cadastrado no Firebase.</p>
@@ -56,8 +56,8 @@
   <div id="appShell" class="app-shell hidden">
     <aside class="sidebar">
       <div class="sidebar-brand">
-        <div class="brand-mark small">AS</div>
-        <div><strong>Ability Suite</strong><span>Portal Corporativo</span></div>
+        <div class="brand-mark small">PC</div>
+        <div><strong>Portal de Compras</strong><span>Sistemas corporativos</span></div>
       </div>
 
       <nav class="nav-list">
@@ -77,7 +77,7 @@
       <header class="topbar">
         <button id="mobileMenuButton" class="mobile-menu-button">☰</button>
         <div>
-          <span class="eyebrow">PORTAL CORPORATIVO</span>
+          <span class="eyebrow">PORTAL DE COMPRAS</span>
           <h2 id="pageTitle">Início</h2>
         </div>
         <div class="topbar-actions">
@@ -177,7 +177,7 @@
           <label class="field"><span>Cargo</span><input id="editJob" placeholder="Ex.: Analista de Compras"></label>
           <label class="field"><span>Departamento</span><input id="editDepartment" placeholder="Ex.: Suprimentos"></label>
           <label class="field"><span>Status</span><select id="editActive"><option value="true">Ativo</option><option value="false">Inativo</option></select></label>
-          <label class="field"><span>Administrador do portal</span><select id="editAdmin"><option value="false">Não</option><option value="true">Sim</option></select></label>
+          <div class="owner-lock-note"><strong>Administração protegida</strong><span>A função de administrador do Portal não pode ser concedida por esta tela.</span></div>
         </div>
 
         <div class="systems-permission-editor">

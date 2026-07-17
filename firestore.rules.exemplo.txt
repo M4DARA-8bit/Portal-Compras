@@ -6,34 +6,81 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function myProfile() {
-      return get(/databases/$(database)/documents/usuariosUid/$(request.auth.uid));
+    function profilePath() {
+      return /databases/$(database)/documents/usuariosUid/$(request.auth.uid);
     }
 
-    function isPortalAdmin() {
-      return signedIn() && myProfile().data.administradorPortal == true;
+    function hasProfile() {
+      return signedIn() && exists(profilePath());
+    }
+
+    function myProfile() {
+      return get(profilePath()).data;
+    }
+
+    function activeUser() {
+      return hasProfile() && myProfile().ativo != false;
+    }
+
+    function portalAdmin() {
+      return activeUser() && myProfile().administradorPortal == true;
+    }
+
+    function systemRole(systemKey) {
+      return activeUser()
+        && myProfile().sistemas[systemKey].acessar == true
+        ? myProfile().sistemas[systemKey].funcao
+        : 'sem_acesso';
+    }
+
+    function canView(systemKey) {
+      return systemRole(systemKey) in ['visualizador', 'editor', 'aprovador', 'administrador'];
+    }
+
+    function canEdit(systemKey) {
+      return systemRole(systemKey) in ['editor', 'aprovador', 'administrador'];
     }
 
     match /usuariosUid/{userId} {
-      allow read: if signedIn() && (request.auth.uid == userId || isPortalAdmin());
-      allow create, update: if isPortalAdmin();
+      allow read: if signedIn() && (request.auth.uid == userId || portalAdmin());
+      allow create, update: if portalAdmin();
+      allow delete: if false;
+    }
+
+    // Compatibilidade temporária com perfis antigos. Prefira migrar tudo para usuariosUid/{uid}.
+    match /usuarios/{userId} {
+      allow read: if signedIn() && (
+        userId == request.auth.uid
+        || userId == request.auth.token.email
+        || portalAdmin()
+      );
+      allow write: if false;
     }
 
     match /logsAcesso/{logId} {
-      allow read, create: if isPortalAdmin();
+      allow read, create: if portalAdmin();
       allow update, delete: if false;
     }
 
     match /fornecedores/{document=**} {
-      allow read: if signedIn() && myProfile().data.sistemas.fornecedores.acessar == true;
+      allow read: if canView('fornecedores') || canView('comparativo') || canView('contratos');
+      allow create, update, delete: if canEdit('fornecedores');
     }
 
+    match /servicos/{document=**} {
+      allow read: if canView('fornecedores');
+      allow create, update, delete: if canEdit('fornecedores');
+    }
+
+    match /logs/{document=**} {
+      allow read: if canView('fornecedores');
+      allow create: if canEdit('fornecedores');
+      allow update, delete: if false;
+    }
+
+    // O Comparativo final não grava documentos no Firebase.
     match /comparativos/{document=**} {
-      allow read: if signedIn() && myProfile().data.sistemas.comparativo.acessar == true;
-    }
-
-    match /contratos/{document=**} {
-      allow read: if signedIn() && myProfile().data.sistemas.contratos.acessar == true;
+      allow read, write: if false;
     }
   }
 }

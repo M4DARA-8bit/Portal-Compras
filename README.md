@@ -1,70 +1,46 @@
-# Ability Suite — Portal Corporativo
+# Portal de Compras — versão final integrada
 
-Portal central para autenticação, visualização de perfil e administração das permissões dos sistemas internos.
+Portal central de autenticação, perfil e permissões para os sistemas de Compras.
 
-## Funções entregues
+## Endereço
 
-- Login por Firebase Authentication.
-- Sessão local com expiração automática após duas horas.
-- Tela inicial com os sistemas permitidos para o usuário.
-- Perfil individual com nome, e-mail, cargo, departamento e permissões.
-- Solicitação de acesso por WhatsApp com mensagem preenchida automaticamente.
-- Controle de acessos exclusivo para administradores do portal.
-- Função independente em cada sistema: sem acesso, visualizador, editor, aprovador ou administrador.
-- Registro de alterações na coleção `logsAcesso`.
+- Portal: `https://portal-compras-flax.vercel.app`
 
-## Arquivos
+## Sistemas integrados
 
-Todos os arquivos ficam na raiz do repositório:
+- Fornecedores: `/fornecedores/`
+- Comparativo de Preços: `/comparativo/`
+- Gestão de Contratos: `/contratos/`
 
-```text
-index.html
-style.css
-firebase.js
-config.js
-auth.js
-app.js
-firestore.rules.exemplo.txt
-vercel.json
-README.md
-```
+O `vercel.json` usa reescritas externas para disponibilizar os três sistemas dentro do domínio do Portal. Dessa forma, ao entrar pelo Portal, o usuário mantém a mesma sessão do Firebase e não precisa fazer login novamente. Quando um sistema é acessado diretamente pelo domínio próprio, ele exige autenticação.
 
-## Configuração obrigatória
+## Autenticação e sessão
 
-### 1. Número corporativo do WhatsApp
+- Firebase Authentication com e-mail e senha.
+- Persistência limitada à sessão do navegador.
+- Expiração operacional após duas horas.
+- Logout compartilhado quando o sistema é usado pelo domínio do Portal.
 
-Abra `config.js` e preencha:
+## Controle de acessos
 
-```javascript
-corporateWhatsApp: "5511999999999"
-```
-
-Use apenas números, incluindo DDI 55 e DDD.
-
-### 2. Endereços dos sistemas
-
-Ainda em `config.js`, substitua as URLs de exemplo pelas URLs publicadas no Vercel:
-
-```javascript
-url: "https://seu-projeto.vercel.app"
-```
-
-### 3. Administrador inicial
-
-No Firestore, crie ou ajuste o documento:
+A administração fica somente no Portal. Os outros sistemas apenas consultam o perfil central salvo em:
 
 ```text
-usuariosUid/{UID_DO_ADMIN}
+usuariosUid/{UID_DO_USUARIO}
 ```
 
-Exemplo:
+Somente a conta que possuir `administradorPortal: true` verá e utilizará a aba **Controle de acessos**. A interface não permite transformar outro usuário em administrador do Portal.
+
+> Como o e-mail/UID do proprietário não foi informado nos arquivos, nenhuma conta foi hardcoded. Defina `administradorPortal: true` exclusivamente no documento da sua conta pelo Firebase Console.
+
+Exemplo do seu perfil:
 
 ```javascript
 {
-  nomeCompleto: "Nome do administrador",
-  email: "admin@empresa.com",
-  cargo: "Administrador",
-  departamento: "Suprimentos",
+  nomeCompleto: "Felipe",
+  email: "seu.email@abilitytecnologia.com.br",
+  cargo: "Administrador do Portal",
+  departamento: "Compras",
   ativo: true,
   administradorPortal: true,
   sistemas: {
@@ -75,41 +51,38 @@ Exemplo:
 }
 ```
 
-O UID é encontrado em **Firebase Console > Authentication > Users**.
+Para os demais usuários, mantenha `administradorPortal: false` ou remova esse campo.
 
-## Estrutura das permissões
+## Funções disponíveis por sistema
 
-```javascript
-sistemas: {
-  fornecedores: {
-    acessar: true,
-    funcao: "editor"
-  },
-  comparativo: {
-    acessar: true,
-    funcao: "visualizador"
-  },
-  contratos: {
-    acessar: false,
-    funcao: "sem_acesso"
-  }
-}
+- `sem_acesso`
+- `visualizador`
+- `editor`
+- `aprovador`
+- `administrador`
+
+Cada usuário pode visualizar, em **Minha conta**, o próprio e-mail, cargo, departamento, função e permissões. O botão **Solicitar mais acesso** abre o WhatsApp corporativo `+55 11 94173-0621` com uma mensagem preenchida.
+
+## Domínios Firebase autorizados
+
+Cadastre os quatro domínios em **Firebase Console → Authentication → Settings → Authorized domains**:
+
+```text
+portal-compras-flax.vercel.app
+painel-fornecedores-ability.vercel.app
+comparativo-mu.vercel.app
+ambiente-teste-contrato.vercel.app
 ```
-
-## Regras Firestore
-
-O arquivo `firestore.rules.exemplo.txt` é apenas uma referência. Não publique essas regras sem comparar com as regras atuais do projeto, pois o Painel de Fornecedores e o Comparativo já usam outras coleções.
 
 ## Publicação
 
-1. Crie um repositório no GitHub.
-2. Envie todos os arquivos para a raiz.
-3. Importe o repositório no Vercel.
-4. Não é necessário comando de build.
-5. Adicione o domínio do Vercel em **Firebase Authentication > Settings > Authorized domains**.
-6. Configure o documento do administrador no Firestore.
-7. Teste login, permissões, URLs e WhatsApp.
+1. Publique ou atualize primeiro os três sistemas individuais.
+2. Publique o Portal por último, pois suas reescritas apontam para os domínios individuais.
+3. Mantenha todos os arquivos do Portal na raiz do repositório.
+4. Preserve o arquivo `vercel.json`.
+5. Configure seu documento em `usuariosUid` como administrador do Portal.
+6. Teste o acesso pelo Portal e depois o acesso direto a cada sistema.
 
-## Segurança
+## Firestore
 
-A interface esconde funções não permitidas, mas a segurança real deve ser aplicada pelas regras do Firestore. Cada sistema também deve consultar `usuariosUid/{uid}` antes de liberar ações de edição, aprovação ou administração.
+`firestore.rules.exemplo.txt` é um modelo de integração. Compare e mescle com as regras atuais antes de publicar. Não substitua regras de produção sem validar as coleções já usadas pelo Painel de Fornecedores.

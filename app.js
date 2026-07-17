@@ -53,7 +53,7 @@ function normalizeProfile(raw = {}, user = {}) {
     cargo: raw.cargo || raw.jobTitle || 'Não informado',
     departamento: raw.departamento || raw.department || 'Não informado',
     ativo: raw.ativo !== false && raw.active !== false,
-    administradorPortal: raw.administradorPortal === true || raw.isAdmin === true || raw.admin === true,
+    administradorPortal: raw.administradorPortal === true,
     sistemas: normalizePermissions(raw)
   };
 }
@@ -157,7 +157,7 @@ function renderSystems() {
       showToast(`Configure a URL de ${system.name} no arquivo config.js.`, 'error');
       return;
     }
-    window.open(system.url, '_blank', 'noopener,noreferrer');
+    window.location.assign(system.url);
   }));
 }
 
@@ -178,10 +178,14 @@ function showPage(page) {
   const titles = { inicio: 'Início', 'minha-conta': 'Minha conta', acessos: 'Controle de acessos' };
   $('pageTitle').textContent = titles[page] || 'Portal';
   document.querySelector('.sidebar').classList.remove('open');
-  if (page === 'acessos' && currentProfile?.administradorPortal) loadUsers();
+  if (page === 'acessos') {
+    if (!currentProfile?.administradorPortal) { showPage('inicio'); return; }
+    loadUsers();
+  }
 }
 
 async function loadUsers() {
+  if (!currentProfile?.administradorPortal) return;
   $('usersList').innerHTML = '<div class="empty-state"><p>Carregando usuários...</p></div>';
   try {
     const snapshot = await getDocs(collection(db, 'usuariosUid'));
@@ -230,15 +234,18 @@ function openUserModal(id) {
   $('editJob').value = user.cargo === 'Não informado' ? '' : user.cargo;
   $('editDepartment').value = user.departamento === 'Não informado' ? '' : user.departamento;
   $('editActive').value = String(user.ativo);
-  $('editAdmin').value = String(user.administradorPortal);
+  $('editActive').disabled = user.administradorPortal;
   $('modalUserTitle').textContent = user.nomeCompleto;
-  $('permissionsEditor').innerHTML = SYSTEM_KEYS.map(key => `
-    <div class="permission-editor-row">
-      <div><strong>${PORTAL_CONFIG.systems[key].name}</strong></div>
-      <select data-permission-key="${key}">
-        ${ROLE_ORDER.map(role => `<option value="${role}" ${user.sistemas[key] === role ? 'selected' : ''}>${roleLabel(role)}</option>`).join('')}
+  const ownerLocked = user.administradorPortal;
+  $('permissionsEditor').innerHTML = SYSTEM_KEYS.map(key => {
+    const selectedRole = ownerLocked ? 'administrador' : user.sistemas[key];
+    return `<div class="permission-editor-row">
+      <div><strong>${PORTAL_CONFIG.systems[key].name}</strong>${ownerLocked ? '<span>Acesso total protegido</span>' : ''}</div>
+      <select data-permission-key="${key}" ${ownerLocked ? 'disabled' : ''}>
+        ${ROLE_ORDER.map(role => `<option value="${role}" ${selectedRole === role ? 'selected' : ''}>${roleLabel(role)}</option>`).join('')}
       </select>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   $('userModal').classList.remove('hidden');
 }
 
@@ -248,15 +255,14 @@ function closeUserModal() {
 
 async function saveUser(event) {
   event.preventDefault();
+  if (!currentProfile?.administradorPortal) { showToast('Ação não autorizada.', 'error'); return; }
   const id = $('editUserId').value;
   const existing = usersCache.find(item => item.id === id);
   if (!existing) return;
   const sistemas = {};
   document.querySelectorAll('[data-permission-key]').forEach(select => {
-    sistemas[select.dataset.permissionKey] = {
-      acessar: select.value !== 'sem_acesso',
-      funcao: select.value
-    };
+    const role = existing.administradorPortal ? 'administrador' : select.value;
+    sistemas[select.dataset.permissionKey] = { acessar: role !== 'sem_acesso', funcao: role };
   });
 
   const payload = {
@@ -264,8 +270,7 @@ async function saveUser(event) {
     email: $('editEmail').value.trim(),
     cargo: $('editJob').value.trim(),
     departamento: $('editDepartment').value.trim(),
-    ativo: $('editActive').value === 'true',
-    administradorPortal: $('editAdmin').value === 'true',
+    ativo: existing.administradorPortal ? true : $('editActive').value === 'true',
     sistemas,
     atualizadoEm: serverTimestamp(),
     atualizadoPor: currentUser.uid,
@@ -379,7 +384,10 @@ async function bootstrap() {
       return;
     }
     if (!getSessionRemainingMs()) {
-      sessionStorage.setItem('ability_portal_session_started_at', String(Date.now()));
+      await logout();
+      showLogin();
+      showToast('Sua sessão expirou. Entre novamente.', 'error');
+      return;
     }
     await handleAuthenticatedUser(user);
   });
