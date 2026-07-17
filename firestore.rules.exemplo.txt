@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function myProfile() {
+      return get(/databases/$(database)/documents/usuariosUid/$(request.auth.uid));
+    }
+
+    function isPortalAdmin() {
+      return signedIn() && myProfile().data.administradorPortal == true;
+    }
+
+    match /usuariosUid/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isPortalAdmin());
+      allow create, update: if isPortalAdmin();
+    }
+
+    match /logsAcesso/{logId} {
+      allow read, create: if isPortalAdmin();
+      allow update, delete: if false;
+    }
+
+    match /fornecedores/{document=**} {
+      allow read: if signedIn() && myProfile().data.sistemas.fornecedores.acessar == true;
+    }
+
+    match /comparativos/{document=**} {
+      allow read: if signedIn() && myProfile().data.sistemas.comparativo.acessar == true;
+    }
+
+    match /contratos/{document=**} {
+      allow read: if signedIn() && myProfile().data.sistemas.contratos.acessar == true;
+    }
+  }
+}
