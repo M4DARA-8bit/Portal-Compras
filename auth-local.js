@@ -35,6 +35,7 @@ import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/12.12
 import {
   getAuth,
   signInWithEmailAndPassword,
+  updatePassword,
   signOut,
   setPersistence,
   browserSessionPersistence
@@ -283,7 +284,7 @@ async function buscarRegistroUsuario(usuario, contaFirebase) {
     if (!id) continue;
     try {
       const snap = await getDoc(doc(db, colecao, id));
-      if (snap.exists()) return { id: snap.id, colecao, data: snap.data() };
+      if (snap.exists()) return { id: snap.id, colecao, data: snap.data(), achadoPorId: colecao === COLLECTION_USERS && id === usuario };
     } catch (err) {
       if (err?.code === 'permission-denied') bloqueadoPorRegra = true;
       console.warn(`Falha ao consultar ${colecao}/${id}`, err);
@@ -299,7 +300,7 @@ async function buscarRegistroUsuario(usuario, contaFirebase) {
     ));
     if (!busca.empty) {
       const achado = busca.docs[0];
-      return { id: achado.id, colecao: COLLECTION_USERS, data: achado.data() };
+      return { id: achado.id, colecao: COLLECTION_USERS, data: achado.data(), achadoPorId: false };
     }
   } catch (err) {
     if (err?.code === 'permission-denied') bloqueadoPorRegra = true;
@@ -349,6 +350,14 @@ export async function loginComUsuario(entrada, senha) {
   }
 
   const dados = registro.data;
+
+  // Se a pessoa trocou o nome de usuário, o id do documento continua o antigo.
+  // Sem esta conferência, o usuário antigo continuaria funcionando para entrar.
+  if (registro.achadoPorId && dados.user && slugUsername(dados.user) !== usuario) {
+    await signOut(auth).catch(() => {});
+    throw erro('usuario-nao-encontrado', 'Usuário ou senha inválidos.');
+  }
+
   if (dados.ativo === false) {
     await signOut(auth).catch(() => {});
     throw erro('usuario-inativo', 'Seu acesso está inativo. Procure a equipe de Compras.');
@@ -538,7 +547,129 @@ export function alterarEmailCorporativo(perfil) {
   return pedirEmailCorporativo(perfil, {});
 }
 
-/* ─── 08. TRANSIÇÃO ENTRE SISTEMAS (entrada única pelo Portal) ──────────────
+/* ─── 08. ALTERAR USUÁRIO E SENHA (autoatendimento) ────────────────────────
+   O id do documento NÃO muda quando a pessoa troca de usuário. O que muda é o
+   campo `user`, e o login já sabe procurar por ele. Isso evita ter que criar e
+   apagar documentos, o que exigiria abrir permissão de exclusão na coleção —
+   um risco desnecessário enquanto o modo local estiver ativo.
+   ────────────────────────────────────────────────────────────────────────── */
+
+export const SENHA_MINIMA = 6;
+
+/** Confere se o nome de usuário já pertence a outra pessoa. */
+export async function usuarioDisponivel(novoUsuario, perfil) {
+  const alvo = slugUsername(novoUsuario);
+  if (!alvo) return false;
+
+  try {
+    const porId = await getDoc(doc(db, COLLECTION_USERS, alvo));
+    if (porId.exists() && porId.id !== perfil.id) return false;
+  } catch {}
+
+  try {
+    const busca = await getDocs(query(
+      collection(db, COLLECTION_USERS),
+      where('user', '==', alvo),
+      limit(2)
+    ));
+    if (busca.docs.some(item => item.id !== perfil.id)) return false;
+  } catch (err) {
+    console.warn('Não foi possível conferir usuários duplicados', err);
+  }
+  return true;
+}
+
+/**
+ * Grava novo usuário e/ou nova senha no Firestore.
+ * Exige a senha atual como confirmação. Se a conta já existir no Firebase
+ * Authentication, a senha é trocada lá também.
+ */
+export async function alterarCredenciais(perfil, { senhaAtual, novoUsuario, novaSenha, confirmarSenha } = {}) {
+  const registro = await getDoc(doc(db, perfil.colecao || COLLECTION_USERS, perfil.id));
+  if (!registro.exists()) throw erro('sem-registro', 'Não encontrei o seu cadastro no banco.');
+  const dados = registro.data();
+
+  // Confere a senha atual. Em contas já migradas, o campo `senha` pode não
+  // existir mais; nesse caso a confirmação é feita pelo próprio Firebase.
+  const senhaGravada = String(dados.senha ?? '');
+  if (senhaGravada) {
+    if (String(senhaAtual ?? '') !== senhaGravada) {
+      throw erro('senha-atual', 'A senha atual está incorreta.');
+    }
+  } else if (perfil.firebaseAuth) {
+    try {
+      await signInWithEmailAndPassword(auth, usernameToEmail(perfil.user), String(senhaAtual ?? ''));
+    } catch {
+      throw erro('senha-atual', 'A senha atual está incorreta.');
+    }
+  }
+
+  const alteracoes = {};
+  const usuarioLimpo = slugUsername(novoUsuario);
+  let usuarioFinal = perfil.user;
+
+  if (usuarioLimpo && usuarioLimpo !== perfil.user) {
+    if (usuarioLimpo.length < 3) throw erro('usuario-curto', 'O usuário precisa ter ao menos 3 caracteres.');
+    if (!(await usuarioDisponivel(usuarioLimpo, perfil))) {
+      throw erro('usuario-em-uso', 'Este nome de usuário já está em uso.');
+    }
+    alteracoes.user = usuarioLimpo;
+    usuarioFinal = usuarioLimpo;
+  }
+
+  if (novaSenha) {
+    const senha = String(novaSenha);
+    if (senha.length < SENHA_MINIMA) {
+      throw erro('senha-curta', `A nova senha precisa ter ao menos ${SENHA_MINIMA} caracteres.`);
+    }
+    if (senha !== String(confirmarSenha ?? '')) {
+      throw erro('senha-diferente', 'A confirmação não confere com a nova senha.');
+    }
+    if (senha === senhaGravada) {
+      throw erro('senha-igual', 'A nova senha precisa ser diferente da atual.');
+    }
+    alteracoes.senha = senha;
+  }
+
+  if (!Object.keys(alteracoes).length) {
+    throw erro('nada-mudou', 'Nenhuma alteração foi informada.');
+  }
+
+  // Se a conta existe no Firebase Auth, a senha precisa mudar lá também,
+  // senão o login passaria a divergir entre os dois lugares.
+  if (alteracoes.senha && perfil.firebaseAuth && auth.currentUser) {
+    try {
+      await updatePassword(auth.currentUser, alteracoes.senha);
+    } catch (err) {
+      throw erro('firebase-senha',
+        'Não consegui atualizar a senha no Firebase Authentication. Saia, entre de novo e tente outra vez.');
+    }
+  }
+
+  await updateDoc(doc(db, perfil.colecao || COLLECTION_USERS, perfil.id), {
+    ...alteracoes,
+    credenciaisAtualizadasEmIso: new Date().toISOString(),
+    credenciaisAtualizadasEmBr: dataBr(),
+    credenciaisAtualizadasEm: serverTimestamp(),
+    atualizadoPor: perfil.user
+  });
+
+  const atualizado = {
+    ...perfil,
+    user: usuarioFinal,
+    emailLogin: usernameToEmail(usuarioFinal)
+  };
+  salvarPerfilSessao(atualizado);
+
+  return {
+    perfil: atualizado,
+    trocouUsuario: !!alteracoes.user,
+    trocouSenha: !!alteracoes.senha,
+    avisoFirebase: !!(alteracoes.user && perfil.firebaseAuth)
+  };
+}
+
+/* ─── 09. TRANSIÇÃO ENTRE SISTEMAS (entrada única pelo Portal) ──────────────
    Quando os sistemas são abertos pelo Portal, as reescritas do vercel.json
    servem tudo pelo MESMO domínio (portal-compras-flax.vercel.app/fornecedores/).
    Como o sessionStorage é por domínio, a sessão criada no Portal já vale lá

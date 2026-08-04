@@ -13,7 +13,7 @@
 <body>
   <div id="toast" class="toast" aria-live="polite"></div>
 
-  <section id="loginScreen" class="login-screen">
+  <section id="loginScreen" class="login-screen hidden">
     <div class="login-visual">
       <div class="brand-mark">AS</div>
       <span class="eyebrow">ABILITY SUITE</span>
@@ -123,7 +123,9 @@
             <div class="profile-data">
               <div><span>Nome completo</span><strong id="accountName">—</strong></div>
               <div><span>E-mail</span><strong id="accountEmail">—</strong></div>
+              <div><span>Usuário de acesso</span><strong id="accountUser">—</strong></div>
               <div><span>Alterar e-mail</span><button id="changeEmailButton" class="secondary-button" type="button">Atualizar meu e-mail</button></div>
+              <div><span>Usuário e senha</span><button id="changeCredentialsButton" class="secondary-button" type="button">Alterar usuário/senha</button></div>
               <div><span>Cargo</span><strong id="accountJob">—</strong></div>
               <div><span>Departamento</span><strong id="accountDepartment">—</strong></div>
               <div><span>Status</span><strong id="accountActive">—</strong></div>
@@ -194,6 +196,31 @@
     </div>
   </div>
 
+
+  <div id="credentialsModal" class="modal hidden">
+    <div class="modal-card" style="width:min(520px,100%)">
+      <div class="modal-heading">
+        <div><span class="eyebrow">MINHA CONTA</span><h2>Alterar usuário e senha</h2></div>
+        <button id="closeCredentialsModal" class="icon-button" type="button">✕</button>
+      </div>
+      <form id="credentialsForm">
+        <label class="field"><span>Senha atual (obrigatória)</span>
+          <input id="credCurrentPassword" type="password" autocomplete="current-password" required></label>
+        <label class="field"><span>Novo usuário</span>
+          <input id="credNewUser" type="text" autocapitalize="none" spellcheck="false" placeholder="deixe como está para não alterar"></label>
+        <label class="field"><span>Nova senha</span>
+          <input id="credNewPassword" type="password" autocomplete="new-password" placeholder="deixe em branco para não alterar"></label>
+        <label class="field"><span>Confirmar nova senha</span>
+          <input id="credConfirmPassword" type="password" autocomplete="new-password"></label>
+        <p id="credStatus" class="form-status"></p>
+        <div class="security-note">Ao trocar o usuário, o antigo deixa de funcionar. Use o novo no próximo login.</div>
+        <div class="modal-actions">
+          <button id="cancelCredentialsModal" class="secondary-button" type="button">Cancelar</button>
+          <button id="saveCredentialsButton" class="primary-button" type="submit">Salvar alterações</button>
+        </div>
+      </form>
+    </div>
+  </div>
   <script type="module" src="app.js"></script>
 </body>
 </html>

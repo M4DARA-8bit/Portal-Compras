@@ -1,7 +1,10 @@
 import { auth, db } from './firebase.js';
 import { PORTAL_CONFIG } from './config.js';
 import { initializeAuthPersistence, login, logout, watchAuth, startSessionWatch, getSessionRemainingMs } from './auth.js';
-import { garantirEmailCorporativo, alterarEmailCorporativo, salvarPerfilSessao, normalizarPerfil, abrirSistema } from './auth-local.js';
+import { garantirEmailCorporativo, alterarEmailCorporativo, salvarPerfilSessao, normalizarPerfil, abrirSistema, iniciarSplashDeEntrada, encerrarSplash, marcarTransicao, alterarCredenciais, logoutLocal } from './auth-local.js';
+
+// Se a pessoa voltou de um dos sistemas, mostra a tela de carregamento na hora.
+iniciarSplashDeEntrada({ titulo: 'Portal de Compras', icone: '◧' });
 import {
   collection,
   doc,
@@ -100,6 +103,7 @@ function renderProfile() {
   $('profileEmail').textContent = p.email;
   $('accountName').textContent = p.nomeCompleto;
   $('accountEmail').textContent = p.email;
+  $('accountUser').textContent = p.user || '—';
   $('accountJob').textContent = p.cargo;
   $('accountDepartment').textContent = p.departamento;
   $('accountActive').textContent = p.ativo ? 'Ativa' : 'Inativa';
@@ -169,6 +173,56 @@ function renderMyPermissions() {
       <span class="role-badge">${roleLabel(role)}</span>
     </div>`;
   }).join('');
+}
+
+/* ─── Alterar usuário e senha ────────────────────────────────────────────── */
+
+function openCredentialsModal() {
+  ['credCurrentPassword','credNewPassword','credConfirmPassword'].forEach(id => $(id).value = '');
+  $('credNewUser').value = currentProfile?.user || '';
+  $('credStatus').textContent = '';
+  $('credentialsModal').classList.remove('hidden');
+  setTimeout(() => $('credCurrentPassword').focus(), 60);
+}
+
+function closeCredentialsModal() {
+  $('credentialsModal').classList.add('hidden');
+}
+
+async function saveCredentials(event) {
+  event.preventDefault();
+  const botao = $('saveCredentialsButton');
+  botao.disabled = true;
+  $('credStatus').textContent = 'Salvando...';
+
+  try {
+    const resultado = await alterarCredenciais(currentProfile, {
+      senhaAtual: $('credCurrentPassword').value,
+      novoUsuario: $('credNewUser').value,
+      novaSenha: $('credNewPassword').value,
+      confirmarSenha: $('credConfirmPassword').value
+    });
+
+    currentProfile = resultado.perfil;
+    currentUser = resultado.perfil;
+    renderProfile();
+    closeCredentialsModal();
+
+    if (resultado.avisoFirebase) {
+      showToast('Usuário alterado. Peça ao administrador para atualizar a conta no Firebase.', 'error');
+    } else if (resultado.trocouUsuario && resultado.trocouSenha) {
+      showToast('Usuário e senha alterados. Use os novos dados no próximo acesso.', 'success');
+    } else if (resultado.trocouUsuario) {
+      showToast('Usuário alterado. O antigo não funciona mais.', 'success');
+    } else {
+      showToast('Senha alterada com sucesso.', 'success');
+    }
+  } catch (error) {
+    console.error(error);
+    $('credStatus').textContent = error?.message || 'Não foi possível salvar as alterações.';
+  } finally {
+    botao.disabled = false;
+  }
 }
 
 function showPage(page) {
@@ -315,6 +369,7 @@ function requestAccess() {
 }
 
 function showLogin() {
+  encerrarSplash();
   $('loginScreen').classList.remove('hidden');
   $('appShell').classList.add('hidden');
 }
@@ -342,6 +397,7 @@ async function handleAuthenticatedUser(perfil) {
   showApp();
   renderProfile();
   showPage('inicio');
+  encerrarSplash();
   startSessionWatch(
     remaining => $('sessionTimer').textContent = formatTime(remaining),
     () => { showLogin(); showToast('Sessão encerrada após 2 horas.', 'error'); }
@@ -396,6 +452,13 @@ async function bootstrap() {
   $('cancelUserModal').addEventListener('click', closeUserModal);
   $('userModal').addEventListener('click', event => { if (event.target === $('userModal')) closeUserModal(); });
   $('userForm').addEventListener('submit', saveUser);
+  $('changeCredentialsButton').addEventListener('click', openCredentialsModal);
+  $('closeCredentialsModal').addEventListener('click', closeCredentialsModal);
+  $('cancelCredentialsModal').addEventListener('click', closeCredentialsModal);
+  $('credentialsForm').addEventListener('submit', saveCredentials);
+  $('credentialsModal').addEventListener('click', event => {
+    if (event.target === $('credentialsModal')) closeCredentialsModal();
+  });
 
   watchAuth(async perfil => {
     if (!perfil) {
