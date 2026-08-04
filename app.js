@@ -1,6 +1,7 @@
 import { auth, db } from './firebase.js';
 import { PORTAL_CONFIG } from './config.js';
 import { initializeAuthPersistence, login, logout, watchAuth, startSessionWatch, getSessionRemainingMs } from './auth.js';
+import { garantirEmailCorporativo, alterarEmailCorporativo, salvarPerfilSessao, normalizarPerfil, abrirSistema } from './auth-local.js';
 import {
   collection,
   doc,
@@ -45,38 +46,14 @@ function normalizePermissions(profile = {}) {
 }
 
 function normalizeProfile(raw = {}, user = {}) {
+  const base = normalizarPerfil(raw.id || user.uid || '', raw);
   return {
-    id: raw.id || user.uid || '',
-    uid: user.uid || raw.uid || raw.id || '',
-    nomeCompleto: raw.nomeCompleto || raw.nome || raw.name || user.displayName || user.email?.split('@')[0] || 'Usuário',
-    email: raw.email || user.email || '',
-    cargo: raw.cargo || raw.jobTitle || 'Não informado',
-    departamento: raw.departamento || raw.department || 'Não informado',
-    ativo: raw.ativo !== false && raw.active !== false,
-    administradorPortal: raw.administradorPortal === true,
-    sistemas: normalizePermissions(raw)
+    ...base,
+    uid: user.uid || base.uid,
+    cargo: raw.cargo || raw.jobTitle || base.cargo || 'Não informado',
+    departamento: raw.departamento || raw.department || base.departamento || 'Não informado',
+    sistemas: raw.sistemas || raw.systems ? normalizePermissions(raw) : base.sistemas
   };
-}
-
-async function findUserProfile(user) {
-  const candidates = [
-    ['usuariosUid', user.uid],
-    ['usuarios_uid', user.uid],
-    ['usuarios', user.uid],
-    ['usuarios', user.email]
-  ];
-
-  for (const [collectionName, id] of candidates) {
-    if (!id) continue;
-    try {
-      const snapshot = await getDoc(doc(db, collectionName, id));
-      if (snapshot.exists()) return normalizeProfile({ id: snapshot.id, ...snapshot.data() }, user);
-    } catch (error) {
-      console.warn(`Falha ao consultar ${collectionName}/${id}`, error);
-    }
-  }
-
-  return normalizeProfile({}, user);
 }
 
 function formatTime(ms) {
@@ -152,13 +129,35 @@ function renderSystems() {
   }).join('');
 
   grid.querySelectorAll('[data-system]').forEach(button => button.addEventListener('click', () => {
-    const system = PORTAL_CONFIG.systems[button.dataset.system];
-    if (!system.url || system.url.includes('SEU-')) {
-      showToast(`Configure a URL de ${system.name} no arquivo config.js.`, 'error');
-      return;
-    }
-    window.location.assign(system.url);
+    entrarNoSistema(button.dataset.system);
   }));
+}
+
+/**
+ * Abre um sistema a partir do Portal, com tela de carregamento e sem exigir
+ * login de novo. A sessão viaja pelo sessionStorage, que é compartilhado porque
+ * as reescritas do vercel.json servem tudo pelo domínio do Portal.
+ */
+async function entrarNoSistema(chave) {
+  const system = PORTAL_CONFIG.systems[chave];
+  if (!system) return;
+  if (!system.url || system.url.includes('SEU-')) {
+    showToast(`Configure a URL de ${system.name} no arquivo config.js.`, 'error');
+    return;
+  }
+  if (currentProfile?.sistemas?.[chave] === 'sem_acesso') {
+    showToast(`Seu perfil não tem acesso a ${system.name}.`, 'error');
+    return;
+  }
+
+  await abrirSistema({
+    chave,
+    nome: system.name,
+    icone: system.icon,
+    url: system.url,
+    urlDireta: system.directUrl,
+    hostsDoPortal: PORTAL_CONFIG.portalHosts || []
+  });
 }
 
 function renderMyPermissions() {
@@ -188,18 +187,23 @@ async function loadUsers() {
   if (!currentProfile?.administradorPortal) return;
   $('usersList').innerHTML = '<div class="empty-state"><p>Carregando usuários...</p></div>';
   try {
-    const snapshot = await getDocs(collection(db, 'usuariosUid'));
+    const snapshot = await getDocs(collection(db, 'usuarios'));
     let docs = snapshot.docs;
+    let colecao = 'usuarios';
     if (!docs.length) {
-      const legacy = await getDocs(collection(db, 'usuarios'));
-      docs = legacy.docs;
+      const alternativa = await getDocs(collection(db, 'usuariosUid'));
+      docs = alternativa.docs;
+      colecao = 'usuariosUid';
     }
-    usersCache = docs.map(item => normalizeProfile({ id: item.id, ...item.data() }, { uid: item.id, email: item.data().email }));
+    usersCache = docs.map(item => ({
+      ...normalizeProfile({ id: item.id, ...item.data() }, { uid: item.id, email: item.data().email }),
+      colecao
+    }));
     usersCache.sort((a, b) => a.nomeCompleto.localeCompare(b.nomeCompleto, 'pt-BR'));
     renderUsers();
   } catch (error) {
     console.error(error);
-    $('usersList').innerHTML = '<div class="empty-state"><h3>Não foi possível carregar os usuários</h3><p>Verifique as regras do Firestore para a coleção usuariosUid.</p></div>';
+    $('usersList').innerHTML = '<div class="empty-state"><h3>Não foi possível carregar os usuários</h3><p>Verifique as regras do Firestore para a coleção usuarios.</p></div>';
     showToast('Falha ao carregar usuários.', 'error');
   }
 }
@@ -279,7 +283,7 @@ async function saveUser(event) {
 
   $('saveUserButton').disabled = true;
   try {
-    await setDoc(doc(db, 'usuariosUid', id), payload, { merge: true });
+    await setDoc(doc(db, existing.colecao || 'usuarios', id), payload, { merge: true });
     await setDoc(doc(db, 'logsAcesso', `${Date.now()}_${id}`), {
       usuarioAlteradoUid: id,
       usuarioAlteradoEmail: payload.email,
@@ -320,14 +324,21 @@ function showApp() {
   $('appShell').classList.remove('hidden');
 }
 
-async function handleAuthenticatedUser(user) {
-  currentUser = user;
-  currentProfile = await findUserProfile(user);
-  if (!currentProfile.ativo) {
+async function handleAuthenticatedUser(perfil) {
+  if (!perfil.ativo) {
     showToast('Sua conta está inativa. Procure o administrador.', 'error');
     await logout();
+    showLogin();
     return;
   }
+
+  // Pede o e-mail corporativo enquanto não houver um cadastrado no banco.
+  const pronto = await garantirEmailCorporativo(perfil, { aoSair: showLogin });
+  if (!pronto) return;
+
+  salvarPerfilSessao(pronto);
+  currentUser = pronto;
+  currentProfile = pronto;
   showApp();
   renderProfile();
   showPage('inicio');
@@ -342,16 +353,13 @@ async function handleLogin(event) {
   $('loginButton').disabled = true;
   $('loginStatus').textContent = 'Validando acesso...';
   try {
-    await login($('loginEmail').value.trim(), $('loginPassword').value);
+    const perfil = await login($('loginEmail').value.trim(), $('loginPassword').value);
     $('loginStatus').textContent = '';
+    $('loginPassword').value = '';
+    await handleAuthenticatedUser(perfil);
   } catch (error) {
     console.error(error);
-    const messages = {
-      'auth/invalid-credential': 'E-mail ou senha inválidos.',
-      'auth/user-disabled': 'Esta conta foi desativada.',
-      'auth/too-many-requests': 'Muitas tentativas. Aguarde alguns minutos.'
-    };
-    $('loginStatus').textContent = messages[error.code] || 'Não foi possível entrar. Verifique os dados.';
+    $('loginStatus').textContent = error?.message || 'Não foi possível entrar. Verifique os dados.';
   } finally {
     $('loginButton').disabled = false;
   }
@@ -360,7 +368,12 @@ async function handleLogin(event) {
 async function bootstrap() {
   await initializeAuthPersistence();
   $('loginForm').addEventListener('submit', handleLogin);
-  $('logoutButton').addEventListener('click', logout);
+  $('logoutButton').addEventListener('click', async () => {
+    await logout();
+    currentUser = null;
+    currentProfile = null;
+    showLogin();
+  });
   $('togglePassword').addEventListener('click', () => {
     const input = $('loginPassword');
     input.type = input.type === 'password' ? 'text' : 'password';
@@ -368,6 +381,14 @@ async function bootstrap() {
   document.querySelectorAll('.nav-item').forEach(button => button.addEventListener('click', () => showPage(button.dataset.page)));
   $('mobileMenuButton').addEventListener('click', () => document.querySelector('.sidebar').classList.toggle('open'));
   $('requestAccessButton').addEventListener('click', requestAccess);
+  $('changeEmailButton')?.addEventListener('click', async () => {
+    const atualizado = await alterarEmailCorporativo(currentProfile);
+    if (!atualizado) return;
+    currentUser = atualizado;
+    currentProfile = atualizado;
+    renderProfile();
+    showToast('E-mail atualizado com sucesso.', 'success');
+  });
   $('refreshUsersButton').addEventListener('click', loadUsers);
   $('userSearch').addEventListener('input', renderUsers);
   $('statusFilter').addEventListener('change', renderUsers);
@@ -376,8 +397,8 @@ async function bootstrap() {
   $('userModal').addEventListener('click', event => { if (event.target === $('userModal')) closeUserModal(); });
   $('userForm').addEventListener('submit', saveUser);
 
-  watchAuth(async user => {
-    if (!user) {
+  watchAuth(async perfil => {
+    if (!perfil) {
       currentUser = null;
       currentProfile = null;
       showLogin();
@@ -389,7 +410,7 @@ async function bootstrap() {
       showToast('Sua sessão expirou. Entre novamente.', 'error');
       return;
     }
-    await handleAuthenticatedUser(user);
+    await handleAuthenticatedUser(perfil);
   });
 }
 

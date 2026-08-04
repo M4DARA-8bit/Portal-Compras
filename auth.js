@@ -1,58 +1,46 @@
-import { auth } from './firebase.js';
-import { PORTAL_CONFIG } from './config.js';
-import {
-  signInWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-  setPersistence,
-  browserSessionPersistence
-} from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
+/* =============================================================================
+   auth.js — Portal de Compras
+   =============================================================================
+   Camada fina sobre auth-local.js, mantendo a mesma assinatura que o app.js
+   já usava. O login agora é por USUÁRIO + SENHA da coleção `usuarios`.
+============================================================================= */
 
-const SESSION_KEY = 'ability_portal_session_started_at';
-let expiryTimer = null;
+import {
+  authReady,
+  loginComUsuario,
+  logoutLocal,
+  restaurarSessao,
+  sessaoRestanteMs,
+  vigiarSessao
+} from './auth-local.js';
 
 export async function initializeAuthPersistence() {
-  await setPersistence(auth, browserSessionPersistence);
+  await authReady;
 }
 
-export async function login(email, password) {
-  sessionStorage.setItem(SESSION_KEY, String(Date.now()));
-  try {
-    const credential = await signInWithEmailAndPassword(auth, email, password);
-    return credential.user;
-  } catch (error) {
-    sessionStorage.removeItem(SESSION_KEY);
-    throw error;
-  }
+/** Autentica e devolve o perfil já normalizado. */
+export async function login(usuario, senha) {
+  return loginComUsuario(usuario, senha);
 }
 
 export async function logout() {
-  sessionStorage.removeItem(SESSION_KEY);
-  if (expiryTimer) clearInterval(expiryTimer);
-  await signOut(auth);
+  await logoutLocal();
 }
 
 export function getSessionRemainingMs() {
-  const startedAt = Number(sessionStorage.getItem(SESSION_KEY));
-  if (!startedAt) return 0;
-  return Math.max(0, PORTAL_CONFIG.sessionDurationMs - (Date.now() - startedAt));
+  return sessaoRestanteMs();
 }
 
 export function startSessionWatch(onTick, onExpired) {
-  if (expiryTimer) clearInterval(expiryTimer);
-  const check = async () => {
-    const remaining = getSessionRemainingMs();
-    onTick?.(remaining);
-    if (remaining <= 0) {
-      clearInterval(expiryTimer);
-      await logout();
-      onExpired?.();
-    }
-  };
-  check();
-  expiryTimer = setInterval(check, 1000);
+  vigiarSessao(onTick, onExpired);
 }
 
+/**
+ * Não existe mais `onAuthStateChanged`: a sessão local é lida do
+ * sessionStorage. A função continua existindo para o app.js não mudar de forma.
+ */
 export function watchAuth(callback) {
-  return onAuthStateChanged(auth, callback);
+  const perfil = restaurarSessao();
+  callback(perfil);
+  return () => {};
 }

@@ -31,17 +31,17 @@
         <div class="mobile-brand"><div class="brand-mark small">PC</div><strong>Portal de Compras</strong></div>
         <span class="eyebrow">ACESSO CORPORATIVO</span>
         <h2>Bem-vindo</h2>
-        <p>Use seu e-mail corporativo cadastrado no Firebase.</p>
+        <p>Entre com o seu usuário e a sua senha de acesso.</p>
 
         <label class="field">
-          <span>E-mail</span>
-          <input id="loginEmail" type="email" autocomplete="username" placeholder="nome@empresa.com" required>
+          <span>Usuário</span>
+          <input id="loginEmail" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Ex.: ademir" required>
         </label>
 
         <label class="field">
           <span>Senha</span>
           <div class="password-wrap">
-            <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Digite sua senha" minlength="6" required>
+            <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Digite sua senha" required>
             <button id="togglePassword" type="button" class="icon-button" aria-label="Mostrar senha">◉</button>
           </div>
         </label>
@@ -123,6 +123,7 @@
             <div class="profile-data">
               <div><span>Nome completo</span><strong id="accountName">—</strong></div>
               <div><span>E-mail</span><strong id="accountEmail">—</strong></div>
+              <div><span>Alterar e-mail</span><button id="changeEmailButton" class="secondary-button" type="button">Atualizar meu e-mail</button></div>
               <div><span>Cargo</span><strong id="accountJob">—</strong></div>
               <div><span>Departamento</span><strong id="accountDepartment">—</strong></div>
               <div><span>Status</span><strong id="accountActive">—</strong></div>

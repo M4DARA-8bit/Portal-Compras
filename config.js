@@ -2,6 +2,12 @@ export const PORTAL_CONFIG = {
   sessionDurationMs: 2 * 60 * 60 * 1000,
   corporateWhatsApp: "5511941730621",
 
+  // Domínios em que as reescritas do vercel.json funcionam. Estando em um
+  // deles, os sistemas abrem por /fornecedores/, /comparativo/ e /contratos/,
+  // ou seja, no MESMO domínio — e é isso que dispensa novo login.
+  // Fora daqui, o Portal cai para o domínio próprio de cada sistema.
+  portalHosts: ["portal-compras-flax.vercel.app"],
+
   systems: {
     fornecedores: {
       name: "Gestão de Fornecedores",
