@@ -29,6 +29,14 @@ export const PORTAL_CONFIG = {
       icon: "▤",
       url: "/contratos/",
       directUrl: "https://ambiente-teste-contrato.vercel.app"
+    },
+    tarefas: {
+      name: "Tarefas",
+      description: "Controle de solicitações, prazos, etapas e prioridades.",
+      icon: "◨",
+      url: "/tarefas/",
+      // Troque pela URL do deploy do módulo Tarefas na Vercel.
+      directUrl: "https://tarefas-solicitadas.vercel.app"
     }
   },
 

@@ -82,5 +82,11 @@ service cloud.firestore {
     match /comparativos/{document=**} {
       allow read, write: if false;
     }
+
+    match /tarefas/{document=**} {
+      allow read: if canView('tarefas');
+      allow create, update: if canEdit('tarefas');
+      allow delete: if canEdit('tarefas');
+    }
   }
 }

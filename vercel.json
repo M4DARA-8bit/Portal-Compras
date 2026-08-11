@@ -37,6 +37,18 @@
     {
       "source": "/contratos/:path*",
       "destination": "https://ambiente-teste-contrato.vercel.app/:path*"
+    },
+    {
+      "source": "/tarefas",
+      "destination": "https://tarefas-solicitadas.vercel.app/"
+    },
+    {
+      "source": "/tarefas/",
+      "destination": "https://tarefas-solicitadas.vercel.app/"
+    },
+    {
+      "source": "/tarefas/:path*",
+      "destination": "https://tarefas-solicitadas.vercel.app/:path*"
     }
   ],
   "headers": [

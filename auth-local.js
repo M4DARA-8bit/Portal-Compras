@@ -95,12 +95,12 @@ const ROLE_PROFILES = {
 // Permissão padrão em cada sistema conforme o cargo gravado em `usuarios.role`.
 // Se o documento tiver um mapa `sistemas`, ele tem prioridade sobre esta tabela.
 const SISTEMAS_POR_ROLE = {
-  Compras:     { fornecedores: 'administrador', comparativo: 'administrador', contratos: 'administrador' },
-  RH:          { fornecedores: 'aprovador',     comparativo: 'visualizador',  contratos: 'visualizador' },
-  SESMT:       { fornecedores: 'aprovador',     comparativo: 'visualizador',  contratos: 'visualizador' },
-  Juridico:    { fornecedores: 'aprovador',     comparativo: 'visualizador',  contratos: 'aprovador' },
-  Diretoria:   { fornecedores: 'aprovador',     comparativo: 'aprovador',     contratos: 'aprovador' },
-  Solicitante: { fornecedores: 'visualizador',  comparativo: 'visualizador',  contratos: 'visualizador' }
+  Compras:     { fornecedores: 'administrador', comparativo: 'administrador', contratos: 'administrador', tarefas: 'administrador' },
+  RH:          { fornecedores: 'aprovador',     comparativo: 'visualizador',  contratos: 'visualizador',  tarefas: 'sem_acesso' },
+  SESMT:       { fornecedores: 'aprovador',     comparativo: 'visualizador',  contratos: 'visualizador',  tarefas: 'sem_acesso' },
+  Juridico:    { fornecedores: 'aprovador',     comparativo: 'visualizador',  contratos: 'aprovador',     tarefas: 'sem_acesso' },
+  Diretoria:   { fornecedores: 'aprovador',     comparativo: 'aprovador',     contratos: 'aprovador',     tarefas: 'visualizador' },
+  Solicitante: { fornecedores: 'visualizador',  comparativo: 'visualizador',  contratos: 'visualizador',  tarefas: 'sem_acesso' }
 };
 
 const SEM_ACESSO = 'sem_acesso';

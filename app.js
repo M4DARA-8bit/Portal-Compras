@@ -1,29 +1,53 @@
-import { auth, db } from './firebase.js';
-import { PORTAL_CONFIG } from './config.js';
-import { initializeAuthPersistence, login, logout, watchAuth, startSessionWatch, getSessionRemainingMs } from './auth.js';
-import { garantirEmailCorporativo, alterarEmailCorporativo, salvarPerfilSessao, normalizarPerfil, abrirSistema, iniciarSplashDeEntrada, encerrarSplash, marcarTransicao, alterarCredenciais, logoutLocal } from './auth-local.js';
-
-// Se a pessoa voltou de um dos sistemas, mostra a tela de carregamento na hora.
-iniciarSplashDeEntrada({ titulo: 'Portal de Compras', icone: '◧' });
+import { db } from './firebase.js';
+import {
+  restaurarSessao,
+  vigiarSessao,
+  logoutLocal,
+  iniciarSplashDeEntrada,
+  encerrarSplash,
+  podeAcessar,
+  podeEditar,
+  COLLECTION_USERS
+} from './auth-local.js';
 import {
   collection,
   doc,
-  getDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
   getDocs,
-  setDoc,
   serverTimestamp,
   query,
-  orderBy,
-  limit
+  orderBy
 } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
 
 const $ = id => document.getElementById(id);
-const SYSTEM_KEYS = Object.keys(PORTAL_CONFIG.systems);
-const ROLE_ORDER = ['sem_acesso','visualizador','editor','aprovador','administrador'];
-let currentUser = null;
-let currentProfile = null;
-let usersCache = [];
+const CHAVE_SISTEMA = 'tarefas';
+const COLLECTION_TAREFAS = 'tarefas';
+
+// URL real do Portal. Quando o Tarefas é aberto direto por este domínio (sem
+// passar pelo Portal), não existe sessão — e mandar para "/" aqui reabriria
+// esta mesma página, travando em loop. Por isso o redirecionamento de saída
+// sempre aponta para o Portal, nunca para uma rota relativa.
+const PORTAL_URL = 'https://portal-compras-flax.vercel.app/';
+const irParaPortal = () => window.location.assign(PORTAL_URL);
+
+const PRIORIDADE_LABEL = { baixa: 'Baixa', media: 'Média', alta: 'Alta', urgente: 'Urgente' };
+const STATUS_LABEL = { nao_iniciada: 'Não iniciada', em_andamento: 'Em andamento', concluida: 'Concluída' };
+const PRIORIDADE_ORDEM = ['urgente', 'alta', 'media', 'baixa'];
+
+let perfil = null;
+let podeEditarTarefas = false;
+let tarefas = [];
+let usuarios = [];
+let etapasEmEdicao = [];
+let sistemasEmEdicao = [];
+let tarefaSelecionadaId = null;
 let toastTimer = null;
+let pararEscuta = null;
+
+/* ─── Utilidades ─────────────────────────────────────────────────────────── */
 
 function showToast(message, type = '') {
   const toast = $('toast');
@@ -33,451 +57,527 @@ function showToast(message, type = '') {
   toastTimer = setTimeout(() => toast.className = 'toast', 3500);
 }
 
-function initials(name = '') {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'U';
+function hojeStr() {
+  const partes = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).formatToParts(new Date());
+  const mapa = Object.fromEntries(partes.map(p => [p.type, p.value]));
+  return `${mapa.year}-${mapa.month}-${mapa.day}`;
 }
 
-function normalizePermissions(profile = {}) {
-  const source = profile.sistemas || profile.systems || {};
-  return Object.fromEntries(SYSTEM_KEYS.map(key => {
-    const entry = source[key];
-    if (typeof entry === 'string') return [key, entry];
-    if (entry?.funcao) return [key, entry.acessar === false ? 'sem_acesso' : entry.funcao];
-    if (entry?.role) return [key, entry.enabled === false ? 'sem_acesso' : entry.role];
-    return [key, 'sem_acesso'];
-  }));
+function diasEntre(dataIso, referenciaIso) {
+  const a = new Date(`${dataIso}T00:00:00`);
+  const b = new Date(`${referenciaIso}T00:00:00`);
+  return Math.round((a - b) / 86400000);
 }
 
-function normalizeProfile(raw = {}, user = {}) {
-  const base = normalizarPerfil(raw.id || user.uid || '', raw);
-  return {
-    ...base,
-    uid: user.uid || base.uid,
-    cargo: raw.cargo || raw.jobTitle || base.cargo || 'Não informado',
-    departamento: raw.departamento || raw.department || base.departamento || 'Não informado',
-    sistemas: raw.sistemas || raw.systems ? normalizePermissions(raw) : base.sistemas
-  };
+function formatarDataBr(iso) {
+  if (!iso) return '—';
+  const [ano, mes, dia] = iso.split('-');
+  return `${dia}/${mes}/${ano}`;
 }
 
-function formatTime(ms) {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const h = String(Math.floor(total / 3600)).padStart(2, '0');
-  const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
-  const s = String(total % 60).padStart(2, '0');
-  return `${h}:${m}:${s}`;
+function escapar(valor) {
+  return String(valor ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function roleLabel(role) {
-  return PORTAL_CONFIG.roles[role] || PORTAL_CONFIG.roles.sem_acesso;
+function calcularPercentual(tarefa) {
+  if (Array.isArray(tarefa.etapas) && tarefa.etapas.length) {
+    const concluidas = tarefa.etapas.filter(e => e.concluida).length;
+    return Math.round((concluidas / tarefa.etapas.length) * 100);
+  }
+  if (tarefa.status === 'concluida') return 100;
+  if (tarefa.status === 'em_andamento') return 50;
+  return 0;
 }
 
-function permissionDescription(role) {
-  const descriptions = {
-    sem_acesso: 'O sistema não está liberado para esta conta.',
-    visualizador: 'Pode consultar dados, sem realizar alterações.',
-    editor: 'Pode visualizar e editar informações operacionais.',
-    aprovador: 'Pode visualizar, editar e realizar aprovações.',
-    administrador: 'Possui acesso total às funções do sistema.'
-  };
-  return descriptions[role] || descriptions.sem_acesso;
+function statusPrazo(tarefa, hoje) {
+  if (!tarefa.prazoInformado || tarefa.status === 'concluida') return null;
+  const diff = diasEntre(tarefa.prazoInformado, hoje);
+  if (diff < 0) return 'estourado';
+  if (diff <= 2) return 'perto';
+  return 'ok';
 }
 
-function dominantRole(profile) {
-  const roles = Object.values(profile.sistemas || {}).filter(role => role !== 'sem_acesso');
-  if (!roles.length) return 'Sem acesso';
-  return roleLabel(roles.sort((a, b) => ROLE_ORDER.indexOf(b) - ROLE_ORDER.indexOf(a))[0]);
+function estaAtrasada(tarefa, hoje) {
+  return statusPrazo(tarefa, hoje) === 'estourado';
 }
 
-function renderProfile() {
-  const p = currentProfile;
-  const avatar = initials(p.nomeCompleto);
-  ['sidebarAvatar','topAvatar','profileAvatar'].forEach(id => $(id).textContent = avatar);
-  $('sidebarName').textContent = p.nomeCompleto;
-  $('sidebarRole').textContent = p.cargo;
-  $('welcomeName').textContent = p.nomeCompleto.split(' ')[0];
-  $('heroDepartment').textContent = p.departamento;
-  $('heroJob').textContent = p.cargo;
-  $('mainRole').textContent = dominantRole(p);
-  $('accountStatus').textContent = p.ativo ? 'Ativa' : 'Inativa';
-  $('profileName').textContent = p.nomeCompleto;
-  $('profileEmail').textContent = p.email;
-  $('accountName').textContent = p.nomeCompleto;
-  $('accountEmail').textContent = p.email;
-  $('accountUser').textContent = p.user || '—';
-  $('accountJob').textContent = p.cargo;
-  $('accountDepartment').textContent = p.departamento;
-  $('accountActive').textContent = p.ativo ? 'Ativa' : 'Inativa';
-  $('adminNav').classList.toggle('hidden', !p.administradorPortal);
+/* ─── Carregamento de dados ──────────────────────────────────────────────── */
 
-  renderSystems();
-  renderMyPermissions();
+async function carregarUsuarios() {
+  try {
+    const snap = await getDocs(collection(db, COLLECTION_USERS));
+    usuarios = snap.docs
+      .map(d => ({ id: d.id, nome: d.data().nome || d.data().nomeCompleto || d.id, ativo: d.data().ativo !== false }))
+      .filter(u => u.ativo)
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  } catch (err) {
+    console.warn('Não foi possível carregar os usuários solicitantes.', err);
+    usuarios = [];
+  }
+  preencherSelectSolicitantes();
 }
 
-function renderSystems() {
-  const grid = $('systemsGrid');
-  const allowed = SYSTEM_KEYS.filter(key => currentProfile.sistemas[key] !== 'sem_acesso');
-  $('systemsCount').textContent = allowed.length;
-  $('noSystems').classList.toggle('hidden', allowed.length > 0);
-  grid.innerHTML = allowed.map(key => {
-    const system = PORTAL_CONFIG.systems[key];
-    const role = currentProfile.sistemas[key];
-    return `<article class="system-card">
-      <div class="system-icon">${system.icon}</div>
-      <h3>${system.name}</h3>
-      <p>${system.description}</p>
-      <div class="system-footer">
-        <span class="role-badge">${roleLabel(role)}</span>
-        <button class="system-link" data-system="${key}">Acessar →</button>
+function preencherSelectSolicitantes() {
+  const select = $('taskSolicitante');
+  select.innerHTML = '<option value="">Selecione ou digite abaixo</option>' +
+    usuarios.map(u => `<option value="${u.id}">${escapar(u.nome)}</option>`).join('');
+}
+
+function escutarTarefas() {
+  const q = query(collection(db, COLLECTION_TAREFAS), orderBy('criadoEmIso', 'desc'));
+  pararEscuta = onSnapshot(q, snap => {
+    tarefas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderTudo();
+  }, err => {
+    console.error(err);
+    showToast('Não foi possível carregar as tarefas. Confira as regras do Firestore.', 'error');
+  });
+}
+
+/* ─── Render: quadro (kanban) ────────────────────────────────────────────── */
+
+function tarefasFiltradas() {
+  const termo = $('taskSearch').value.trim().toLowerCase();
+  const prioridade = $('priorityFilter').value;
+  const solicitante = $('requesterFilter').value;
+
+  return tarefas.filter(t => {
+    if (prioridade !== 'all' && t.prioridade !== prioridade) return false;
+    if (solicitante !== 'all' && (t.solicitanteNome || '') !== solicitante) return false;
+    if (termo) {
+      const alvo = [t.titulo, t.solicitanteNome, ...(t.sistemas || [])].join(' ').toLowerCase();
+      if (!alvo.includes(termo)) return false;
+    }
+    return true;
+  });
+}
+
+function preencherFiltroSolicitantes() {
+  const select = $('requesterFilter');
+  const atual = select.value;
+  const nomes = [...new Set(tarefas.map(t => t.solicitanteNome).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  select.innerHTML = '<option value="all">Todos os solicitantes</option>' +
+    nomes.map(n => `<option value="${escapar(n)}">${escapar(n)}</option>`).join('');
+  if (nomes.includes(atual)) select.value = atual;
+}
+
+function badgePrioridade(prioridade) {
+  return `<span class="badge badge-${prioridade}">${PRIORIDADE_LABEL[prioridade] || '—'}</span>`;
+}
+
+function badgePrazo(tarefa, hoje) {
+  const situacao = statusPrazo(tarefa, hoje);
+  if (!situacao) return '';
+  const texto = situacao === 'estourado' ? `Atrasada (${formatarDataBr(tarefa.prazoInformado)})`
+    : situacao === 'perto' ? `Vence ${formatarDataBr(tarefa.prazoInformado)}`
+    : `Prazo ${formatarDataBr(tarefa.prazoInformado)}`;
+  return `<span class="badge badge-prazo-${situacao}">${texto}</span>`;
+}
+
+function cardTarefaHtml(tarefa, hoje) {
+  const pct = calcularPercentual(tarefa);
+  const atrasada = estaAtrasada(tarefa, hoje);
+  return `
+    <article class="task-card ${atrasada ? 'overdue' : ''}" data-task-id="${tarefa.id}">
+      <div class="task-card-top">
+        <h4>${escapar(tarefa.titulo)}</h4>
+      </div>
+      <div class="task-card-meta">
+        ${badgePrioridade(tarefa.prioridade)}
+        ${badgePrazo(tarefa, hoje)}
+      </div>
+      <div class="progress-row">
+        <div class="progress-track" style="flex:1"><div class="progress-fill" style="width:${pct}%"></div></div>
+        <small>${pct}%</small>
+      </div>
+      <div class="task-card-foot">
+        <div class="task-requester">👤 <span>${escapar(tarefa.solicitanteNome || 'Sem solicitante')}</span></div>
       </div>
     </article>`;
-  }).join('');
-
-  grid.querySelectorAll('[data-system]').forEach(button => button.addEventListener('click', () => {
-    entrarNoSistema(button.dataset.system);
-  }));
 }
 
-/**
- * Abre um sistema a partir do Portal, com tela de carregamento e sem exigir
- * login de novo. A sessão viaja pelo sessionStorage, que é compartilhado porque
- * as reescritas do vercel.json servem tudo pelo domínio do Portal.
- */
-async function entrarNoSistema(chave) {
-  const system = PORTAL_CONFIG.systems[chave];
-  if (!system) return;
-  if (!system.url || system.url.includes('SEU-')) {
-    showToast(`Configure a URL de ${system.name} no arquivo config.js.`, 'error');
-    return;
-  }
-  if (currentProfile?.sistemas?.[chave] === 'sem_acesso') {
-    showToast(`Seu perfil não tem acesso a ${system.name}.`, 'error');
-    return;
-  }
+function renderKanban() {
+  const hoje = hojeStr();
+  const grupos = { nao_iniciada: [], em_andamento: [], atrasada: [], concluida: [] };
 
-  await abrirSistema({
-    chave,
-    nome: system.name,
-    icone: system.icon,
-    url: system.url,
-    urlDireta: system.directUrl,
-    hostsDoPortal: PORTAL_CONFIG.portalHosts || []
+  tarefasFiltradas().forEach(t => {
+    if (t.status !== 'concluida' && estaAtrasada(t, hoje)) grupos.atrasada.push(t);
+    else grupos[t.status]?.push(t);
+  });
+
+  const colunas = [
+    { chave: 'nao_iniciada', titulo: 'Não iniciada' },
+    { chave: 'em_andamento', titulo: 'Em andamento' },
+    { chave: 'atrasada', titulo: 'Atrasada' },
+    { chave: 'concluida', titulo: 'Concluída' }
+  ];
+
+  $('kanban').innerHTML = colunas.map(col => `
+    <div class="kanban-col">
+      <div class="kanban-col-head"><strong>${col.titulo}</strong><span>${grupos[col.chave].length}</span></div>
+      <div class="kanban-cards">${grupos[col.chave].map(t => cardTarefaHtml(t, hoje)).join('') || ''}</div>
+    </div>`).join('');
+
+  $('kanban').querySelectorAll('[data-task-id]').forEach(card => {
+    card.addEventListener('click', () => abrirDetalhe(card.dataset.taskId));
+  });
+
+  const total = tarefasFiltradas().length;
+  $('visibleCount').textContent = `${total} tarefa${total === 1 ? '' : 's'}`;
+  $('emptyState').classList.toggle('hidden', tarefas.length > 0);
+  $('kanban').classList.toggle('hidden', tarefas.length === 0);
+}
+
+function renderResumo() {
+  const hoje = hojeStr();
+  const naoConcluidas = tarefas.filter(t => t.status !== 'concluida');
+  const atrasadas = naoConcluidas.filter(t => estaAtrasada(t, hoje));
+  const proximas = naoConcluidas.filter(t => statusPrazo(t, hoje) === 'perto');
+
+  $('statTotal').textContent = tarefas.length;
+  $('statAndamento').textContent = tarefas.filter(t => t.status === 'em_andamento').length;
+  $('statConcluidas').textContent = tarefas.filter(t => t.status === 'concluida').length;
+  $('statAtrasadas').textContent = atrasadas.length;
+  $('statProximas').textContent = proximas.length;
+}
+
+/* ─── Render: dashboard ──────────────────────────────────────────────────── */
+
+function renderDashboard() {
+  const hoje = hojeStr();
+  const naoConcluidas = tarefas.filter(t => t.status !== 'concluida');
+  const atrasadas = naoConcluidas.filter(t => estaAtrasada(t, hoje));
+  const proximas = naoConcluidas.filter(t => statusPrazo(t, hoje) === 'perto');
+  const mediaPct = tarefas.length ? Math.round(tarefas.reduce((soma, t) => soma + calcularPercentual(t), 0) / tarefas.length) : 0;
+
+  $('dashTotal').textContent = tarefas.length;
+  $('dashMedia').textContent = `${mediaPct}%`;
+  $('dashNaoIniciadas').textContent = tarefas.filter(t => t.status === 'nao_iniciada').length;
+  $('dashAtrasadas').textContent = atrasadas.length;
+  $('dashProximas').textContent = proximas.length;
+
+  // Barra por prioridade
+  const porPrioridade = PRIORIDADE_ORDEM.map(p => ({ label: PRIORIDADE_LABEL[p], valor: tarefas.filter(t => t.prioridade === p).length, tom: p === 'urgente' || p === 'alta' ? 'danger' : p === 'media' ? 'warning' : '' }));
+  const maxPrioridade = Math.max(1, ...porPrioridade.map(i => i.valor));
+  $('barPrioridade').innerHTML = porPrioridade.map(i => `
+    <div class="bar-row">
+      <span class="bar-label">${i.label}</span>
+      <div class="bar-track"><div class="bar-fill ${i.tom}" style="width:${(i.valor / maxPrioridade) * 100}%"></div></div>
+      <span>${i.valor}</span>
+    </div>`).join('');
+
+  // Barra por solicitante (top 6)
+  const contagem = {};
+  tarefas.forEach(t => { const nome = t.solicitanteNome || 'Sem solicitante'; contagem[nome] = (contagem[nome] || 0) + 1; });
+  const porSolicitante = Object.entries(contagem).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const maxSolicitante = Math.max(1, ...porSolicitante.map(i => i[1]));
+  $('barSolicitante').innerHTML = porSolicitante.length ? porSolicitante.map(([nome, valor]) => `
+    <div class="bar-row">
+      <span class="bar-label" title="${escapar(nome)}">${escapar(nome)}</span>
+      <div class="bar-track"><div class="bar-fill success" style="width:${(valor / maxSolicitante) * 100}%"></div></div>
+      <span>${valor}</span>
+    </div>`).join('') : '<p style="color:var(--muted);font-size:12px">Nenhuma tarefa cadastrada ainda.</p>';
+
+  // Próximos prazos
+  const ordenadas = naoConcluidas
+    .filter(t => t.prazoInformado)
+    .sort((a, b) => a.prazoInformado.localeCompare(b.prazoInformado))
+    .slice(0, 8);
+  $('deadlineList').innerHTML = ordenadas.length ? ordenadas.map(t => `
+    <div class="deadline-row">
+      <div><strong>${escapar(t.titulo)}</strong><span>${escapar(t.solicitanteNome || 'Sem solicitante')}</span></div>
+      ${badgePrazo(t, hoje)}
+    </div>`).join('') : '<p style="color:var(--muted);font-size:12px">Nenhum prazo em aberto.</p>';
+}
+
+function renderTudo() {
+  preencherFiltroSolicitantes();
+  renderResumo();
+  renderKanban();
+  renderDashboard();
+}
+
+/* ─── Modal: nova / editar tarefa ────────────────────────────────────────── */
+
+function renderEtapasEditor() {
+  $('taskEtapas').innerHTML = etapasEmEdicao.map((etapa, indice) => `
+    <div class="etapa-row" data-indice="${indice}">
+      <input type="checkbox" ${etapa.concluida ? 'checked' : ''} data-campo="concluida">
+      <input type="text" placeholder="Descreva a etapa" value="${escapar(etapa.texto)}" data-campo="texto">
+      <button type="button" class="etapa-remove" title="Remover etapa">✕</button>
+    </div>`).join('') || '<p style="color:var(--muted);font-size:12px">Nenhuma etapa adicionada ainda.</p>';
+
+  $('taskEtapas').querySelectorAll('.etapa-row').forEach(linha => {
+    const indice = Number(linha.dataset.indice);
+    linha.querySelector('[data-campo="texto"]').addEventListener('input', e => etapasEmEdicao[indice].texto = e.target.value);
+    linha.querySelector('[data-campo="concluida"]').addEventListener('change', e => etapasEmEdicao[indice].concluida = e.target.checked);
+    linha.querySelector('.etapa-remove').addEventListener('click', () => { etapasEmEdicao.splice(indice, 1); renderEtapasEditor(); });
   });
 }
 
-function renderMyPermissions() {
-  $('myPermissions').innerHTML = SYSTEM_KEYS.map(key => {
-    const system = PORTAL_CONFIG.systems[key];
-    const role = currentProfile.sistemas[key];
-    return `<div class="permission-row">
-      <div><strong>${system.name}</strong><span>${permissionDescription(role)}</span></div>
-      <span class="role-badge">${roleLabel(role)}</span>
-    </div>`;
-  }).join('');
-}
-
-/* ─── Alterar usuário e senha ────────────────────────────────────────────── */
-
-function openCredentialsModal() {
-  ['credCurrentPassword','credNewPassword','credConfirmPassword'].forEach(id => $(id).value = '');
-  $('credNewUser').value = currentProfile?.user || '';
-  $('credStatus').textContent = '';
-  $('credentialsModal').classList.remove('hidden');
-  setTimeout(() => $('credCurrentPassword').focus(), 60);
-}
-
-function closeCredentialsModal() {
-  $('credentialsModal').classList.add('hidden');
-}
-
-async function saveCredentials(event) {
-  event.preventDefault();
-  const botao = $('saveCredentialsButton');
-  botao.disabled = true;
-  $('credStatus').textContent = 'Salvando...';
-
-  try {
-    const resultado = await alterarCredenciais(currentProfile, {
-      senhaAtual: $('credCurrentPassword').value,
-      novoUsuario: $('credNewUser').value,
-      novaSenha: $('credNewPassword').value,
-      confirmarSenha: $('credConfirmPassword').value
-    });
-
-    currentProfile = resultado.perfil;
-    currentUser = resultado.perfil;
-    renderProfile();
-    closeCredentialsModal();
-
-    if (resultado.avisoFirebase) {
-      showToast('Usuário alterado. Peça ao administrador para atualizar a conta no Firebase.', 'error');
-    } else if (resultado.trocouUsuario && resultado.trocouSenha) {
-      showToast('Usuário e senha alterados. Use os novos dados no próximo acesso.', 'success');
-    } else if (resultado.trocouUsuario) {
-      showToast('Usuário alterado. O antigo não funciona mais.', 'success');
-    } else {
-      showToast('Senha alterada com sucesso.', 'success');
-    }
-  } catch (error) {
-    console.error(error);
-    $('credStatus').textContent = error?.message || 'Não foi possível salvar as alterações.';
-  } finally {
-    botao.disabled = false;
-  }
-}
-
-function showPage(page) {
-  document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === `page-${page}`));
-  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
-  const titles = { inicio: 'Início', 'minha-conta': 'Minha conta', acessos: 'Controle de acessos' };
-  $('pageTitle').textContent = titles[page] || 'Portal';
-  document.querySelector('.sidebar').classList.remove('open');
-  if (page === 'acessos') {
-    if (!currentProfile?.administradorPortal) { showPage('inicio'); return; }
-    loadUsers();
-  }
-}
-
-async function loadUsers() {
-  if (!currentProfile?.administradorPortal) return;
-  $('usersList').innerHTML = '<div class="empty-state"><p>Carregando usuários...</p></div>';
-  try {
-    const snapshot = await getDocs(collection(db, 'usuarios'));
-    let docs = snapshot.docs;
-    let colecao = 'usuarios';
-    if (!docs.length) {
-      const alternativa = await getDocs(collection(db, 'usuariosUid'));
-      docs = alternativa.docs;
-      colecao = 'usuariosUid';
-    }
-    usersCache = docs.map(item => ({
-      ...normalizeProfile({ id: item.id, ...item.data() }, { uid: item.id, email: item.data().email }),
-      colecao
-    }));
-    usersCache.sort((a, b) => a.nomeCompleto.localeCompare(b.nomeCompleto, 'pt-BR'));
-    renderUsers();
-  } catch (error) {
-    console.error(error);
-    $('usersList').innerHTML = '<div class="empty-state"><h3>Não foi possível carregar os usuários</h3><p>Verifique as regras do Firestore para a coleção usuarios.</p></div>';
-    showToast('Falha ao carregar usuários.', 'error');
-  }
-}
-
-function renderUsers() {
-  const search = $('userSearch').value.trim().toLowerCase();
-  const status = $('statusFilter').value;
-  const filtered = usersCache.filter(user => {
-    const text = `${user.nomeCompleto} ${user.email} ${user.cargo} ${user.departamento}`.toLowerCase();
-    const searchMatch = !search || text.includes(search);
-    const statusMatch = status === 'all' || (status === 'active' ? user.ativo : !user.ativo);
-    return searchMatch && statusMatch;
+function renderSistemasChips() {
+  const wrap = $('taskSistemas');
+  const input = $('taskSistemasInput');
+  wrap.querySelectorAll('.tag-chip').forEach(chip => chip.remove());
+  sistemasEmEdicao.forEach((nome, indice) => {
+    const chip = document.createElement('span');
+    chip.className = 'tag-chip';
+    chip.innerHTML = `${escapar(nome)} <button type="button" data-indice="${indice}">✕</button>`;
+    chip.querySelector('button').addEventListener('click', () => { sistemasEmEdicao.splice(indice, 1); renderSistemasChips(); });
+    wrap.insertBefore(chip, input);
   });
-  $('usersTotal').textContent = `${filtered.length} usuário${filtered.length === 1 ? '' : 's'}`;
-  $('usersList').innerHTML = filtered.map(user => `
-    <article class="user-row">
-      <div class="user-identity"><div class="avatar">${initials(user.nomeCompleto)}</div><div><strong>${user.nomeCompleto}</strong><span>${user.email || 'E-mail não informado'}</span></div></div>
-      <div class="user-meta"><strong>${user.cargo}</strong><span>${user.departamento}</span></div>
-      <div><span class="status-pill ${user.ativo ? 'active' : 'inactive'}">${user.ativo ? 'Ativo' : 'Inativo'}</span></div>
-      <button class="edit-user-button" data-user-id="${user.id}">Configurar</button>
-    </article>`).join('') || '<div class="empty-state"><h3>Nenhum usuário encontrado</h3><p>Ajuste os filtros de pesquisa.</p></div>';
-
-  $('usersList').querySelectorAll('[data-user-id]').forEach(button => button.addEventListener('click', () => openUserModal(button.dataset.userId)));
 }
 
-function openUserModal(id) {
-  const user = usersCache.find(item => item.id === id);
-  if (!user) return;
-  $('editUserId').value = user.id;
-  $('editName').value = user.nomeCompleto;
-  $('editEmail').value = user.email;
-  $('editJob').value = user.cargo === 'Não informado' ? '' : user.cargo;
-  $('editDepartment').value = user.departamento === 'Não informado' ? '' : user.departamento;
-  $('editActive').value = String(user.ativo);
-  $('editActive').disabled = user.administradorPortal;
-  $('modalUserTitle').textContent = user.nomeCompleto;
-  const ownerLocked = user.administradorPortal;
-  $('permissionsEditor').innerHTML = SYSTEM_KEYS.map(key => {
-    const selectedRole = ownerLocked ? 'administrador' : user.sistemas[key];
-    return `<div class="permission-editor-row">
-      <div><strong>${PORTAL_CONFIG.systems[key].name}</strong>${ownerLocked ? '<span>Acesso total protegido</span>' : ''}</div>
-      <select data-permission-key="${key}" ${ownerLocked ? 'disabled' : ''}>
-        ${ROLE_ORDER.map(role => `<option value="${role}" ${selectedRole === role ? 'selected' : ''}>${roleLabel(role)}</option>`).join('')}
-      </select>
-    </div>`;
-  }).join('');
-  $('userModal').classList.remove('hidden');
+function limparFormularioTarefa() {
+  $('taskForm').reset();
+  $('taskId').value = '';
+  etapasEmEdicao = [];
+  sistemasEmEdicao = [];
+  renderEtapasEditor();
+  renderSistemasChips();
+  $('taskFormStatus').textContent = '';
+  $('deleteTaskButton').classList.add('hidden');
 }
 
-function closeUserModal() {
-  $('userModal').classList.add('hidden');
+function abrirModalNovaTarefa() {
+  limparFormularioTarefa();
+  $('taskModalEyebrow').textContent = 'NOVA TAREFA';
+  $('taskModalTitle').textContent = 'Registrar solicitação';
+  $('taskModal').classList.remove('hidden');
+  setTimeout(() => $('taskTitulo').focus(), 60);
 }
 
-async function saveUser(event) {
-  event.preventDefault();
-  if (!currentProfile?.administradorPortal) { showToast('Ação não autorizada.', 'error'); return; }
-  const id = $('editUserId').value;
-  const existing = usersCache.find(item => item.id === id);
-  if (!existing) return;
-  const sistemas = {};
-  document.querySelectorAll('[data-permission-key]').forEach(select => {
-    const role = existing.administradorPortal ? 'administrador' : select.value;
-    sistemas[select.dataset.permissionKey] = { acessar: role !== 'sem_acesso', funcao: role };
-  });
+function abrirModalEdicao(id) {
+  const tarefa = tarefas.find(t => t.id === id);
+  if (!tarefa) return;
+  limparFormularioTarefa();
+  $('taskModalEyebrow').textContent = 'EDITAR TAREFA';
+  $('taskModalTitle').textContent = tarefa.titulo;
+  $('taskId').value = tarefa.id;
+  $('taskTitulo').value = tarefa.titulo || '';
+  $('taskSolicitante').value = tarefa.solicitanteId || '';
+  $('taskSolicitanteLivre').value = tarefa.solicitanteId ? '' : (tarefa.solicitanteNome || '');
+  $('taskPrioridade').value = tarefa.prioridade || 'media';
+  $('taskStatus').value = tarefa.status || 'nao_iniciada';
+  $('taskPrazoSolicitado').value = tarefa.prazoSolicitado || '';
+  $('taskPrazoInformado').value = tarefa.prazoInformado || '';
+  $('taskOQueFalta').value = tarefa.oQueFalta || '';
+  etapasEmEdicao = (tarefa.etapas || []).map(e => ({ ...e }));
+  sistemasEmEdicao = [...(tarefa.sistemas || [])];
+  renderEtapasEditor();
+  renderSistemasChips();
+  $('deleteTaskButton').classList.toggle('hidden', !podeEditarTarefas);
+  $('taskModal').classList.remove('hidden');
+}
+
+function fecharModalTarefa() {
+  $('taskModal').classList.add('hidden');
+}
+
+async function salvarTarefa(evento) {
+  evento.preventDefault();
+  if (!podeEditarTarefas) { showToast('Seu perfil só tem acesso de visualização.', 'error'); return; }
+
+  const titulo = $('taskTitulo').value.trim();
+  if (!titulo) { $('taskFormStatus').textContent = 'Informe o título da tarefa.'; return; }
+
+  const idSolicitante = $('taskSolicitante').value;
+  const nomeLivre = $('taskSolicitanteLivre').value.trim();
+  const usuarioSelecionado = usuarios.find(u => u.id === idSolicitante);
+  const solicitanteNome = nomeLivre || usuarioSelecionado?.nome || '';
+
+  const etapasValidas = etapasEmEdicao.filter(e => e.texto && e.texto.trim()).map(e => ({ texto: e.texto.trim(), concluida: !!e.concluida }));
 
   const payload = {
-    nomeCompleto: $('editName').value.trim(),
-    email: $('editEmail').value.trim(),
-    cargo: $('editJob').value.trim(),
-    departamento: $('editDepartment').value.trim(),
-    ativo: existing.administradorPortal ? true : $('editActive').value === 'true',
-    sistemas,
-    atualizadoEm: serverTimestamp(),
-    atualizadoPor: currentUser.uid,
-    atualizadoPorEmail: currentUser.email
+    titulo,
+    solicitanteId: nomeLivre ? '' : idSolicitante,
+    solicitanteNome,
+    prioridade: $('taskPrioridade').value,
+    status: $('taskStatus').value,
+    prazoSolicitado: $('taskPrazoSolicitado').value || '',
+    prazoInformado: $('taskPrazoInformado').value || '',
+    oQueFalta: $('taskOQueFalta').value.trim(),
+    etapas: etapasValidas,
+    sistemas: sistemasEmEdicao,
+    atualizadoEmIso: new Date().toISOString(),
+    atualizadoPor: perfil.user
   };
 
-  $('saveUserButton').disabled = true;
+  const id = $('taskId').value;
+  $('saveTaskButton').disabled = true;
+  $('taskFormStatus').textContent = 'Salvando...';
+
   try {
-    await setDoc(doc(db, existing.colecao || 'usuarios', id), payload, { merge: true });
-    await setDoc(doc(db, 'logsAcesso', `${Date.now()}_${id}`), {
-      usuarioAlteradoUid: id,
-      usuarioAlteradoEmail: payload.email,
-      administradorUid: currentUser.uid,
-      administradorEmail: currentUser.email,
-      alteracoes: payload,
-      criadoEm: serverTimestamp()
+    if (id) {
+      await updateDoc(doc(db, COLLECTION_TAREFAS, id), payload);
+    } else {
+      await addDoc(collection(db, COLLECTION_TAREFAS), {
+        ...payload,
+        criadoEmIso: new Date().toISOString(),
+        criadoEm: serverTimestamp(),
+        criadoPor: perfil.user
+      });
+    }
+    fecharModalTarefa();
+    showToast('Tarefa salva com sucesso.', 'success');
+  } catch (err) {
+    console.error(err);
+    $('taskFormStatus').textContent = 'Não foi possível salvar. Confira as regras do Firestore.';
+  } finally {
+    $('saveTaskButton').disabled = false;
+  }
+}
+
+async function excluirTarefaAtual() {
+  const id = $('taskId').value;
+  if (!id) return;
+  if (!confirm('Excluir esta tarefa? Essa ação não pode ser desfeita.')) return;
+  try {
+    await deleteDoc(doc(db, COLLECTION_TAREFAS, id));
+    fecharModalTarefa();
+    showToast('Tarefa excluída.', 'success');
+  } catch (err) {
+    console.error(err);
+    showToast('Não foi possível excluir a tarefa.', 'error');
+  }
+}
+
+/* ─── Modal: detalhe da tarefa ───────────────────────────────────────────── */
+
+function abrirDetalhe(id) {
+  const tarefa = tarefas.find(t => t.id === id);
+  if (!tarefa) return;
+  tarefaSelecionadaId = id;
+
+  $('detailTitulo').textContent = tarefa.titulo;
+  $('detailSolicitante').textContent = tarefa.solicitanteNome || '—';
+  $('detailPrioridade').textContent = PRIORIDADE_LABEL[tarefa.prioridade] || '—';
+  $('detailPrazoSolicitado').textContent = formatarDataBr(tarefa.prazoSolicitado);
+  $('detailPrazoInformado').textContent = formatarDataBr(tarefa.prazoInformado);
+
+  const pct = calcularPercentual(tarefa);
+  $('detailProgressFill').style.width = `${pct}%`;
+  $('detailProgressLabel').textContent = `${pct}%`;
+
+  $('detailEtapas').innerHTML = (tarefa.etapas || []).map((etapa, indice) => `
+    <label class="detail-etapa ${etapa.concluida ? 'concluida' : ''}">
+      <input type="checkbox" ${etapa.concluida ? 'checked' : ''} data-indice="${indice}" ${podeEditarTarefas ? '' : 'disabled'}>
+      <span>${escapar(etapa.texto)}</span>
+    </label>`).join('') || '<p style="color:var(--muted);font-size:12px">Nenhuma etapa cadastrada.</p>';
+
+  $('detailEtapas').querySelectorAll('input[type="checkbox"]').forEach(input => {
+    input.addEventListener('change', async e => {
+      const indice = Number(e.target.dataset.indice);
+      const etapas = (tarefa.etapas || []).map((etapa, i) => i === indice ? { ...etapa, concluida: e.target.checked } : etapa);
+      try {
+        await updateDoc(doc(db, COLLECTION_TAREFAS, id), { etapas, atualizadoEmIso: new Date().toISOString(), atualizadoPor: perfil.user });
+      } catch (err) {
+        console.error(err);
+        showToast('Não foi possível atualizar a etapa.', 'error');
+      }
     });
-    closeUserModal();
-    showToast('Permissões atualizadas com sucesso.', 'success');
-    await loadUsers();
-  } catch (error) {
-    console.error(error);
-    showToast('Não foi possível salvar as permissões.', 'error');
-  } finally {
-    $('saveUserButton').disabled = false;
-  }
+  });
+
+  $('detailOQueFalta').textContent = tarefa.oQueFalta || '—';
+  $('detailOQueFaltaWrap').classList.toggle('hidden', !tarefa.oQueFalta);
+  $('editTaskFromDetail').classList.toggle('hidden', !podeEditarTarefas);
+  $('detailModal').classList.remove('hidden');
 }
 
-function requestAccess() {
-  const number = PORTAL_CONFIG.corporateWhatsApp.replace(/\D/g, '');
-  if (!number) {
-    showToast('Configure o número corporativo no arquivo config.js.', 'error');
+function fecharDetalhe() {
+  $('detailModal').classList.add('hidden');
+  tarefaSelecionadaId = null;
+}
+
+/* ─── Etapas / sistemas: eventos de criação ──────────────────────────────── */
+
+function configurarEditorEtapasSistemas() {
+  $('addEtapaButton').addEventListener('click', () => {
+    etapasEmEdicao.push({ texto: '', concluida: false });
+    renderEtapasEditor();
+  });
+
+  $('taskSistemasInput').addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const valor = e.target.value.trim();
+    if (!valor) return;
+    if (!sistemasEmEdicao.includes(valor)) sistemasEmEdicao.push(valor);
+    e.target.value = '';
+    renderSistemasChips();
+  });
+}
+
+/* ─── Navegação e sessão ─────────────────────────────────────────────────── */
+
+function showPage(pagina) {
+  if (pagina === 'voltar') { irParaPortal(); return; }
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === pagina));
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${pagina}`));
+  $('pageTitle').textContent = pagina === 'dashboard' ? 'Dashboard' : 'Quadro de solicitações';
+  document.querySelector('.sidebar').classList.remove('open');
+}
+
+function initials(nome = '') {
+  return nome.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase() || 'U';
+}
+
+function renderPerfil() {
+  $('sidebarAvatar').textContent = initials(perfil.nomeCompleto || perfil.nome);
+  $('sidebarName').textContent = perfil.nomeCompleto || perfil.nome;
+  $('sidebarRole').textContent = perfil.cargo || perfil.label || 'Colaborador';
+  $('newTaskButton').classList.toggle('hidden', !podeEditarTarefas);
+}
+
+async function iniciar() {
+  const controleSplash = iniciarSplashDeEntrada({ titulo: 'Tarefas', icone: '◨' });
+
+  perfil = restaurarSessao();
+  if (!perfil) { irParaPortal(); return; }
+  if (!podeAcessar(perfil, CHAVE_SISTEMA)) {
+    showToast('Seu perfil não tem acesso ao módulo de Tarefas.', 'error');
+    setTimeout(irParaPortal, 1200);
     return;
   }
-  const permissions = SYSTEM_KEYS.map(key => `- ${PORTAL_CONFIG.systems[key].name}: ${roleLabel(currentProfile.sistemas[key])}`).join('\n');
-  const message = `Olá! Gostaria de solicitar uma alteração de acesso no Portal Corporativo.\n\nNome: ${currentProfile.nomeCompleto}\nE-mail: ${currentProfile.email}\nCargo: ${currentProfile.cargo}\nDepartamento: ${currentProfile.departamento}\n\nAcessos atuais:\n${permissions}\n\nSistema solicitado:\nFunção solicitada:\nMotivo:`;
-  window.open(`https://wa.me/${number}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
-}
 
-function showLogin() {
-  encerrarSplash();
-  $('loginScreen').classList.remove('hidden');
-  $('appShell').classList.add('hidden');
-}
-
-function showApp() {
-  $('loginScreen').classList.add('hidden');
+  podeEditarTarefas = podeEditar(perfil, CHAVE_SISTEMA);
   $('appShell').classList.remove('hidden');
-}
+  renderPerfil();
 
-async function handleAuthenticatedUser(perfil) {
-  if (!perfil.ativo) {
-    showToast('Sua conta está inativa. Procure o administrador.', 'error');
-    await logout();
-    showLogin();
-    return;
-  }
-
-  // Pede o e-mail corporativo enquanto não houver um cadastrado no banco.
-  const pronto = await garantirEmailCorporativo(perfil, { aoSair: showLogin });
-  if (!pronto) return;
-
-  salvarPerfilSessao(pronto);
-  currentUser = pronto;
-  currentProfile = pronto;
-  showApp();
-  renderProfile();
-  showPage('inicio');
-  encerrarSplash();
-  startSessionWatch(
-    remaining => $('sessionTimer').textContent = formatTime(remaining),
-    () => { showLogin(); showToast('Sessão encerrada após 2 horas.', 'error'); }
-  );
-}
-
-async function handleLogin(event) {
-  event.preventDefault();
-  $('loginButton').disabled = true;
-  $('loginStatus').textContent = 'Validando acesso...';
-  try {
-    const perfil = await login($('loginEmail').value.trim(), $('loginPassword').value);
-    $('loginStatus').textContent = '';
-    $('loginPassword').value = '';
-    await handleAuthenticatedUser(perfil);
-  } catch (error) {
-    console.error(error);
-    $('loginStatus').textContent = error?.message || 'Não foi possível entrar. Verifique os dados.';
-  } finally {
-    $('loginButton').disabled = false;
-  }
-}
-
-async function bootstrap() {
-  await initializeAuthPersistence();
-  $('loginForm').addEventListener('submit', handleLogin);
-  $('logoutButton').addEventListener('click', async () => {
-    await logout();
-    currentUser = null;
-    currentProfile = null;
-    showLogin();
-  });
-  $('togglePassword').addEventListener('click', () => {
-    const input = $('loginPassword');
-    input.type = input.type === 'password' ? 'text' : 'password';
-  });
-  document.querySelectorAll('.nav-item').forEach(button => button.addEventListener('click', () => showPage(button.dataset.page)));
+  document.querySelectorAll('.nav-item').forEach(botao => botao.addEventListener('click', () => showPage(botao.dataset.page)));
   $('mobileMenuButton').addEventListener('click', () => document.querySelector('.sidebar').classList.toggle('open'));
-  $('requestAccessButton').addEventListener('click', requestAccess);
-  $('changeEmailButton')?.addEventListener('click', async () => {
-    const atualizado = await alterarEmailCorporativo(currentProfile);
-    if (!atualizado) return;
-    currentUser = atualizado;
-    currentProfile = atualizado;
-    renderProfile();
-    showToast('E-mail atualizado com sucesso.', 'success');
-  });
-  $('refreshUsersButton').addEventListener('click', loadUsers);
-  $('userSearch').addEventListener('input', renderUsers);
-  $('statusFilter').addEventListener('change', renderUsers);
-  $('closeUserModal').addEventListener('click', closeUserModal);
-  $('cancelUserModal').addEventListener('click', closeUserModal);
-  $('userModal').addEventListener('click', event => { if (event.target === $('userModal')) closeUserModal(); });
-  $('userForm').addEventListener('submit', saveUser);
-  $('changeCredentialsButton').addEventListener('click', openCredentialsModal);
-  $('closeCredentialsModal').addEventListener('click', closeCredentialsModal);
-  $('cancelCredentialsModal').addEventListener('click', closeCredentialsModal);
-  $('credentialsForm').addEventListener('submit', saveCredentials);
-  $('credentialsModal').addEventListener('click', event => {
-    if (event.target === $('credentialsModal')) closeCredentialsModal();
-  });
+  $('logoutButton').addEventListener('click', async () => { await logoutLocal(); irParaPortal(); });
 
-  watchAuth(async perfil => {
-    if (!perfil) {
-      currentUser = null;
-      currentProfile = null;
-      showLogin();
-      return;
-    }
-    if (!getSessionRemainingMs()) {
-      await logout();
-      showLogin();
-      showToast('Sua sessão expirou. Entre novamente.', 'error');
-      return;
-    }
-    await handleAuthenticatedUser(perfil);
-  });
+  $('newTaskButton').addEventListener('click', abrirModalNovaTarefa);
+  $('closeTaskModal').addEventListener('click', fecharModalTarefa);
+  $('cancelTaskModal').addEventListener('click', fecharModalTarefa);
+  $('taskModal').addEventListener('click', e => { if (e.target === $('taskModal')) fecharModalTarefa(); });
+  $('taskForm').addEventListener('submit', salvarTarefa);
+  $('deleteTaskButton').addEventListener('click', excluirTarefaAtual);
+  configurarEditorEtapasSistemas();
+
+  $('closeDetailModal').addEventListener('click', fecharDetalhe);
+  $('closeDetailModalButton').addEventListener('click', fecharDetalhe);
+  $('detailModal').addEventListener('click', e => { if (e.target === $('detailModal')) fecharDetalhe(); });
+  $('editTaskFromDetail').addEventListener('click', () => { const id = tarefaSelecionadaId; fecharDetalhe(); abrirModalEdicao(id); });
+
+  $('taskSearch').addEventListener('input', renderKanban);
+  $('priorityFilter').addEventListener('change', renderKanban);
+  $('requesterFilter').addEventListener('change', renderKanban);
+
+  await carregarUsuarios();
+  escutarTarefas();
+
+  vigiarSessao(
+    () => {},
+    () => { pararEscuta?.(); irParaPortal(); }
+  );
+
+  encerrarSplash();
 }
 
-bootstrap().catch(error => {
-  console.error(error);
-  showToast('Falha ao inicializar o portal.', 'error');
+iniciar().catch(err => {
+  console.error(err);
+  showToast('Falha ao carregar o módulo de Tarefas.', 'error');
 });
