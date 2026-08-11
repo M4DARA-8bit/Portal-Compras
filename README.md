@@ -1,72 +1,88 @@
-# Tarefas — módulo do Portal de Compras
+# Portal de Compras — versão final integrada
 
-Controle de solicitações (tipo agenda): prioridade, prazos, etapas, % concluído,
-alertas de prazo/prioridade e dashboard de estatísticas. Usa o mesmo Firebase e a
-mesma sessão do Portal — não pede login de novo quando aberto por lá.
+Portal central de autenticação, perfil e permissões para os sistemas de Compras.
 
-## O que este módulo grava no Firestore
+## Endereço
 
-Coleção nova: **`tarefas`**. Cada documento:
+- Portal: `https://portal-compras-flax.vercel.app`
+
+## Sistemas integrados
+
+- Fornecedores: `/fornecedores/`
+- Comparativo de Preços: `/comparativo/`
+- Gestão de Contratos: `/contratos/`
+
+O `vercel.json` usa reescritas externas para disponibilizar os três sistemas dentro do domínio do Portal. Dessa forma, ao entrar pelo Portal, o usuário mantém a mesma sessão do Firebase e não precisa fazer login novamente. Quando um sistema é acessado diretamente pelo domínio próprio, ele exige autenticação.
+
+## Autenticação e sessão
+
+- Firebase Authentication com e-mail e senha.
+- Persistência limitada à sessão do navegador.
+- Expiração operacional após duas horas.
+- Logout compartilhado quando o sistema é usado pelo domínio do Portal.
+
+## Controle de acessos
+
+A administração fica somente no Portal. Os outros sistemas apenas consultam o perfil central salvo em:
+
+```text
+usuariosUid/{UID_DO_USUARIO}
+```
+
+Somente a conta que possuir `administradorPortal: true` verá e utilizará a aba **Controle de acessos**. A interface não permite transformar outro usuário em administrador do Portal.
+
+> Como o e-mail/UID do proprietário não foi informado nos arquivos, nenhuma conta foi hardcoded. Defina `administradorPortal: true` exclusivamente no documento da sua conta pelo Firebase Console.
+
+Exemplo do seu perfil:
 
 ```javascript
 {
-  titulo: "Enviar PPP do colaborador X",
-  solicitanteId: "ademir",       // id do documento em `usuarios`, se selecionado na lista
-  solicitanteNome: "Ademir Santos",
-  prioridade: "alta",             // baixa | media | alta | urgente
-  status: "em_andamento",         // nao_iniciada | em_andamento | concluida
-  etapas: [
-    { texto: "Solicitar assinatura", concluida: true },
-    { texto: "Enviar ao RH", concluida: false }
-  ],
-  sistemas: ["DocuSign", "Painel de Fornecedores"],
-  oQueFalta: "Aguardando assinatura do colaborador",
-  prazoSolicitado: "2026-08-15",  // data que a pessoa pediu
-  prazoInformado: "2026-08-14",   // data que você disse que entrega
-  criadoEmIso, criadoEm, criadoPor,
-  atualizadoEmIso, atualizadoPor
+  nomeCompleto: "Felipe",
+  email: "seu.email@abilitytecnologia.com.br",
+  cargo: "Administrador do Portal",
+  departamento: "Compras",
+  ativo: true,
+  administradorPortal: true,
+  sistemas: {
+    fornecedores: { acessar: true, funcao: "administrador" },
+    comparativo: { acessar: true, funcao: "administrador" },
+    contratos: { acessar: true, funcao: "administrador" }
+  }
 }
 ```
 
-Os **solicitantes** são lidos direto da coleção `usuarios` que já existe no projeto
-Firebase `fornecedores-cp` (mesma base do Painel de Fornecedores e do Comparativo).
-Não é preciso cadastrar nada — o módulo só faz um `select` nessa coleção.
+Para os demais usuários, mantenha `administradorPortal: false` ou remova esse campo.
+
+## Funções disponíveis por sistema
+
+- `sem_acesso`
+- `visualizador`
+- `editor`
+- `aprovador`
+- `administrador`
+
+Cada usuário pode visualizar, em **Minha conta**, o próprio e-mail, cargo, departamento, função e permissões. O botão **Solicitar mais acesso** abre o WhatsApp corporativo `+55 11 94173-0621` com uma mensagem preenchida.
+
+## Domínios Firebase autorizados
+
+Cadastre os quatro domínios em **Firebase Console → Authentication → Settings → Authorized domains**:
+
+```text
+portal-compras-flax.vercel.app
+painel-fornecedores-ability.vercel.app
+comparativo-mu.vercel.app
+ambiente-teste-contrato.vercel.app
+```
 
 ## Publicação
 
-1. Deploy já publicado em: `https://tarefas-solicitadas.vercel.app` — e já referenciado
-   em `config.js` e `vercel.json` na raiz do Portal.
-2. Republique o Portal (raiz do repositório) para que o rewrite `/tarefas/` passe
-   a valer.
-3. Adicione o domínio `tarefas-solicitadas.vercel.app` em Firebase Console →
-   Authentication → Settings → Authorized domains.
-4. Publique a regra da coleção `tarefas` no Firestore (veja
-   `firestore.rules.exemplo.txt`, já atualizado com o bloco `match /tarefas`).
+1. Publique ou atualize primeiro os três sistemas individuais.
+2. Publique o Portal por último, pois suas reescritas apontam para os domínios individuais.
+3. Mantenha todos os arquivos do Portal na raiz do repositório.
+4. Preserve o arquivo `vercel.json`.
+5. Configure seu documento em `usuariosUid` como administrador do Portal.
+6. Teste o acesso pelo Portal e depois o acesso direto a cada sistema.
 
-> Importante: acessar `tarefas-solicitadas.vercel.app` **direto** (fora do
-> Portal) sempre vai te mandar de volta para o Portal — é esperado, porque a
-> sessão só existe no domínio do Portal. Entre sempre pelo card "Tarefas" lá
-> dentro.
+## Firestore
 
-## Permissões
-
-Reaproveita a mesma chave de sistema `tarefas` já adicionada em `auth-local.js`
-(`SISTEMAS_POR_ROLE`). Por padrão:
-
-- **Compras**: administrador (acesso total)
-- **Diretoria**: visualizador (só consulta)
-- **RH, SESMT, Jurídico, Solicitante**: sem acesso
-
-Ajuste esses padrões em `SISTEMAS_POR_ROLE` (arquivo `auth-local.js`, tanto o
-desta pasta quanto o da raiz do Portal — mantenha os dois iguais) ou libere por
-usuário na tela **Controle de acessos** do Portal, marcando a função desejada
-para "Tarefas" em cada conta.
-
-## O que ainda vale ajustar
-
-- Este módulo assume que a coleção `usuarios` tem os mesmos campos já usados
-  pelo Portal (`nome`/`nomeCompleto`, `ativo`). Se algum usuário não tiver
-  `nome`, o módulo cai para o id do documento.
-- O quadro (kanban) separa "Atrasada" das demais colunas automaticamente quando
-  a data de `prazoInformado` já passou e a tarefa não está concluída — não é
-  um status manual, é calculado na hora de exibir.
+`firestore.rules.exemplo.txt` é um modelo de integração. Compare e mescle com as regras atuais antes de publicar. Não substitua regras de produção sem validar as coleções já usadas pelo Painel de Fornecedores.
