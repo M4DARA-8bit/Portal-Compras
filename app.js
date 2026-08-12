@@ -19,7 +19,7 @@ import {
 
 const $ = id => document.getElementById(id);
 const SYSTEM_KEYS = Object.keys(PORTAL_CONFIG.systems);
-const ROLE_ORDER = ['sem_acesso','visualizador','editor','aprovador','administrador'];
+const ROLE_ORDER = ['sem_acesso','solicitante','visualizador','editor','aprovador','administrador'];
 let currentUser = null;
 let currentProfile = null;
 let usersCache = [];
@@ -74,6 +74,7 @@ function roleLabel(role) {
 function permissionDescription(role) {
   const descriptions = {
     sem_acesso: 'O sistema não está liberado para esta conta.',
+    solicitante: 'Só pode criar solicitações e acompanhar as próprias — não gerencia as demais.',
     visualizador: 'Pode consultar dados, sem realizar alterações.',
     editor: 'Pode visualizar e editar informações operacionais.',
     aprovador: 'Pode visualizar, editar e realizar aprovações.',
@@ -117,6 +118,7 @@ function renderSystems() {
   const grid = $('systemsGrid');
   const allowed = SYSTEM_KEYS.filter(key => currentProfile.sistemas[key] !== 'sem_acesso');
   $('systemsCount').textContent = allowed.length;
+  $('systemsTotal').textContent = SYSTEM_KEYS.length;
   $('noSystems').classList.toggle('hidden', allowed.length > 0);
   grid.innerHTML = allowed.map(key => {
     const system = PORTAL_CONFIG.systems[key];
@@ -145,7 +147,8 @@ function renderSystems() {
 async function entrarNoSistema(chave) {
   const system = PORTAL_CONFIG.systems[chave];
   if (!system) return;
-  if (!system.url || system.url.includes('SEU-')) {
+  const urlValida = valor => !!valor && !valor.includes('SEU-');
+  if (!urlValida(system.url) && !urlValida(system.directUrl)) {
     showToast(`Configure a URL de ${system.name} no arquivo config.js.`, 'error');
     return;
   }
@@ -297,10 +300,11 @@ function openUserModal(id) {
   const ownerLocked = user.administradorPortal;
   $('permissionsEditor').innerHTML = SYSTEM_KEYS.map(key => {
     const selectedRole = ownerLocked ? 'administrador' : user.sistemas[key];
+    const rolesDoSistema = key === 'tarefas' ? ['sem_acesso', 'solicitante', 'administrador'] : ROLE_ORDER;
     return `<div class="permission-editor-row">
       <div><strong>${PORTAL_CONFIG.systems[key].name}</strong>${ownerLocked ? '<span>Acesso total protegido</span>' : ''}</div>
       <select data-permission-key="${key}" ${ownerLocked ? 'disabled' : ''}>
-        ${ROLE_ORDER.map(role => `<option value="${role}" ${selectedRole === role ? 'selected' : ''}>${roleLabel(role)}</option>`).join('')}
+        ${rolesDoSistema.map(role => `<option value="${role}" ${selectedRole === role ? 'selected' : ''}>${roleLabel(role)}</option>`).join('')}
       </select>
     </div>`;
   }).join('');

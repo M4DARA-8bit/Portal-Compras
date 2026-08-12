@@ -29,11 +29,20 @@ export const PORTAL_CONFIG = {
       icon: "▤",
       url: "/contratos/",
       directUrl: "https://ambiente-teste-contrato.vercel.app"
+    },
+    tarefas: {
+      name: "Tarefas",
+      description: "Controle de solicitações, prazos, etapas e prioridades.",
+      icon: "◨",
+      // Sem "url": este sistema é independente (login próprio), não passa
+      // pelas reescritas do vercel.json. O Portal só linka direto pra ele.
+      directUrl: "https://tarefas-solicitadas.vercel.app"
     }
   },
 
   roles: {
     sem_acesso: "Sem acesso",
+    solicitante: "Solicitante",
     visualizador: "Visualizador",
     editor: "Editor",
     aprovador: "Aprovador",

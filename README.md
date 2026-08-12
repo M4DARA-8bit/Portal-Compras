@@ -11,6 +11,7 @@ Portal central de autenticação, perfil e permissões para os sistemas de Compr
 - Fornecedores: `/fornecedores/`
 - Comparativo de Preços: `/comparativo/`
 - Gestão de Contratos: `/contratos/`
+- Tarefas: `https://tarefas-solicitadas.vercel.app` (app independente, com login próprio — o Portal só linka direto, sem passar pelas reescritas do `vercel.json`. Por isso ele pede login de novo ao entrar, diferente dos outros três)
 
 O `vercel.json` usa reescritas externas para disponibilizar os três sistemas dentro do domínio do Portal. Dessa forma, ao entrar pelo Portal, o usuário mantém a mesma sessão do Firebase e não precisa fazer login novamente. Quando um sistema é acessado diretamente pelo domínio próprio, ele exige autenticação.
 
@@ -56,22 +57,26 @@ Para os demais usuários, mantenha `administradorPortal: false` ou remova esse c
 ## Funções disponíveis por sistema
 
 - `sem_acesso`
+- `solicitante` *(só no Tarefas — cria pedidos e acompanha os próprios, sem gerenciar)*
 - `visualizador`
 - `editor`
 - `aprovador`
 - `administrador`
 
+No sistema **Tarefas**, o editor de permissões do Portal só oferece `sem_acesso` / `solicitante` / `administrador` — é o único que recebe e gerencia tarefas de verdade (Compras, por padrão); todos os outros cargos entram só como `solicitante`.
+
 Cada usuário pode visualizar, em **Minha conta**, o próprio e-mail, cargo, departamento, função e permissões. O botão **Solicitar mais acesso** abre o WhatsApp corporativo `+55 11 94173-0621` com uma mensagem preenchida.
 
 ## Domínios Firebase autorizados
 
-Cadastre os quatro domínios em **Firebase Console → Authentication → Settings → Authorized domains**:
+Cadastre os domínios em **Firebase Console → Authentication → Settings → Authorized domains**:
 
 ```text
 portal-compras-flax.vercel.app
 painel-fornecedores-ability.vercel.app
 comparativo-mu.vercel.app
 ambiente-teste-contrato.vercel.app
+tarefas-solicitadas.vercel.app
 ```
 
 ## Publicação
