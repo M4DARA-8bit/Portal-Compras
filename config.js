@@ -34,8 +34,7 @@ export const PORTAL_CONFIG = {
       name: "Tarefas",
       description: "Controle de solicitações, prazos, etapas e prioridades.",
       icon: "◨",
-      // Sem "url": este sistema é independente (login próprio), não passa
-      // pelas reescritas do vercel.json. O Portal só linka direto pra ele.
+      url: "/tarefas/",
       directUrl: "https://tarefas-solicitadas.vercel.app"
     }
   },
@@ -45,6 +44,7 @@ export const PORTAL_CONFIG = {
     solicitante: "Solicitante",
     visualizador: "Visualizador",
     editor: "Editor",
+    executor: "Executor",
     aprovador: "Aprovador",
     administrador: "Administrador"
   }

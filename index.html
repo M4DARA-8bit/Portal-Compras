@@ -151,7 +151,10 @@
       <section id="page-acessos" class="page">
         <div class="admin-banner">
           <div><span class="eyebrow">ADMINISTRAÇÃO</span><h1>Controle central de acessos</h1><p>Gerencie cargos, departamentos, sistemas e funções sem alterar cada aplicação separadamente.</p></div>
-          <button id="refreshUsersButton" class="secondary-button">↻ Atualizar usuários</button>
+          <div style="display:flex;gap:10px">
+            <button id="newUserButton" class="primary-button">+ Novo usuário</button>
+            <button id="refreshUsersButton" class="secondary-button">↻ Atualizar usuários</button>
+          </div>
         </div>
 
         <div class="admin-toolbar">
@@ -176,11 +179,25 @@
         <input id="editUserId" type="hidden">
         <div class="form-grid">
           <label class="field"><span>Nome completo</span><input id="editName" required></label>
-          <label class="field"><span>E-mail</span><input id="editEmail" type="email" readonly></label>
+          <label class="field"><span>E-mail</span><input id="editEmail" type="email"></label>
           <label class="field"><span>Cargo</span><input id="editJob" placeholder="Ex.: Analista de Compras"></label>
           <label class="field"><span>Departamento</span><input id="editDepartment" placeholder="Ex.: Suprimentos"></label>
           <label class="field"><span>Status</span><select id="editActive"><option value="true">Ativo</option><option value="false">Inativo</option></select></label>
           <div class="owner-lock-note"><strong>Administração protegida</strong><span>A função de administrador do Portal não pode ser concedida por esta tela.</span></div>
+        </div>
+
+        <div id="novoUsuarioCampos" class="form-grid hidden" style="margin-top:4px">
+          <label class="field"><span>Usuário de login</span><input id="novoUsuarioUsuario" autocapitalize="none" spellcheck="false" placeholder="Ex.: ademir"></label>
+          <label class="field"><span>Senha inicial</span><input id="novoUsuarioSenha" type="text" placeholder="Mínimo 6 caracteres"></label>
+          <label class="field"><span>Cargo base (departamento)</span>
+            <select id="novoUsuarioCargoBase">
+              <option value="Compras">Compras</option>
+              <option value="RH">RH</option>
+              <option value="SESMT">SESMT</option>
+              <option value="Juridico">Jurídico</option>
+              <option value="Diretoria">Diretoria</option>
+              <option value="Solicitante" selected>Solicitante</option>
+            </select></label>
         </div>
 
         <div class="systems-permission-editor">

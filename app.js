@@ -1,7 +1,7 @@
 import { auth, db } from './firebase.js';
 import { PORTAL_CONFIG } from './config.js';
 import { initializeAuthPersistence, login, logout, watchAuth, startSessionWatch, getSessionRemainingMs } from './auth.js';
-import { garantirEmailCorporativo, alterarEmailCorporativo, salvarPerfilSessao, normalizarPerfil, abrirSistema, iniciarSplashDeEntrada, encerrarSplash, marcarTransicao, alterarCredenciais, logoutLocal } from './auth-local.js';
+import { garantirEmailCorporativo, alterarEmailCorporativo, salvarPerfilSessao, normalizarPerfil, abrirSistema, iniciarSplashDeEntrada, encerrarSplash, marcarTransicao, alterarCredenciais, logoutLocal, slugUsername, SENHA_MINIMA } from './auth-local.js';
 
 // Se a pessoa voltou de um dos sistemas, mostra a tela de carregamento na hora.
 iniciarSplashDeEntrada({ titulo: 'Portal de Compras', icone: '◧' });
@@ -19,11 +19,12 @@ import {
 
 const $ = id => document.getElementById(id);
 const SYSTEM_KEYS = Object.keys(PORTAL_CONFIG.systems);
-const ROLE_ORDER = ['sem_acesso','solicitante','visualizador','editor','aprovador','administrador'];
+const ROLE_ORDER = ['sem_acesso','solicitante','visualizador','editor','aprovador','executor','administrador'];
 let currentUser = null;
 let currentProfile = null;
 let usersCache = [];
 let toastTimer = null;
+let modoModalUsuario = 'editar'; // 'editar' | 'criar'
 
 function showToast(message, type = '') {
   const toast = $('toast');
@@ -286,21 +287,17 @@ function renderUsers() {
   $('usersList').querySelectorAll('[data-user-id]').forEach(button => button.addEventListener('click', () => openUserModal(button.dataset.userId)));
 }
 
-function openUserModal(id) {
-  const user = usersCache.find(item => item.id === id);
-  if (!user) return;
-  $('editUserId').value = user.id;
-  $('editName').value = user.nomeCompleto;
-  $('editEmail').value = user.email;
-  $('editJob').value = user.cargo === 'Não informado' ? '' : user.cargo;
-  $('editDepartment').value = user.departamento === 'Não informado' ? '' : user.departamento;
-  $('editActive').value = String(user.ativo);
-  $('editActive').disabled = user.administradorPortal;
-  $('modalUserTitle').textContent = user.nomeCompleto;
-  const ownerLocked = user.administradorPortal;
+/** Lista de funções válidas pra cada sistema — Tarefas é diferente dos outros três. */
+function rolesParaSistema(chave) {
+  return chave === 'tarefas'
+    ? ['sem_acesso', 'solicitante', 'executor', 'administrador']
+    : ['sem_acesso', 'visualizador', 'editor', 'aprovador', 'administrador'];
+}
+
+function preencherEditorPermissoes(sistemasAtuais, ownerLocked) {
   $('permissionsEditor').innerHTML = SYSTEM_KEYS.map(key => {
-    const selectedRole = ownerLocked ? 'administrador' : user.sistemas[key];
-    const rolesDoSistema = key === 'tarefas' ? ['sem_acesso', 'solicitante', 'administrador'] : ROLE_ORDER;
+    const selectedRole = ownerLocked ? 'administrador' : (sistemasAtuais[key] || 'sem_acesso');
+    const rolesDoSistema = rolesParaSistema(key);
     return `<div class="permission-editor-row">
       <div><strong>${PORTAL_CONFIG.systems[key].name}</strong>${ownerLocked ? '<span>Acesso total protegido</span>' : ''}</div>
       <select data-permission-key="${key}" ${ownerLocked ? 'disabled' : ''}>
@@ -308,23 +305,143 @@ function openUserModal(id) {
       </select>
     </div>`;
   }).join('');
+}
+
+function openUserModal(id) {
+  const user = usersCache.find(item => item.id === id);
+  if (!user) return;
+  modoModalUsuario = 'editar';
+  $('editUserId').value = user.id;
+  $('editName').value = user.nomeCompleto;
+  $('editEmail').value = user.email;
+  $('editEmail').readOnly = true;
+  $('editJob').value = user.cargo === 'Não informado' ? '' : user.cargo;
+  $('editDepartment').value = user.departamento === 'Não informado' ? '' : user.departamento;
+  $('editActive').value = String(user.ativo);
+  $('editActive').disabled = user.administradorPortal;
+  $('modalUserTitle').textContent = user.nomeCompleto;
+  $('novoUsuarioCampos').classList.add('hidden');
+  const ownerLocked = user.administradorPortal;
+  preencherEditorPermissoes(user.sistemas, ownerLocked);
   $('userModal').classList.remove('hidden');
+}
+
+/** Abre o mesmo modal em branco, pra cadastrar alguém que ainda não existe. */
+function openNewUserModal() {
+  if (!currentProfile?.administradorPortal) return;
+  modoModalUsuario = 'criar';
+  $('editUserId').value = '';
+  $('editName').value = '';
+  $('editEmail').value = '';
+  $('editEmail').readOnly = false;
+  $('editJob').value = '';
+  $('editDepartment').value = '';
+  $('editActive').value = 'true';
+  $('editActive').disabled = false;
+  $('novoUsuarioUsuario').value = '';
+  $('novoUsuarioSenha').value = '';
+  $('novoUsuarioCargoBase').value = 'Solicitante';
+  $('modalUserTitle').textContent = 'Novo usuário';
+  $('novoUsuarioCampos').classList.remove('hidden');
+  preencherEditorPermissoes({}, false);
+  $('userModal').classList.remove('hidden');
+  setTimeout(() => $('editName').focus(), 60);
 }
 
 function closeUserModal() {
   $('userModal').classList.add('hidden');
 }
 
+function lerPermissoesDoFormulario() {
+  const sistemas = {};
+  document.querySelectorAll('[data-permission-key]').forEach(select => {
+    sistemas[select.dataset.permissionKey] = select.value;
+  });
+  return sistemas;
+}
+
 async function saveUser(event) {
   event.preventDefault();
   if (!currentProfile?.administradorPortal) { showToast('Ação não autorizada.', 'error'); return; }
+
+  if (modoModalUsuario === 'criar') {
+    await criarUsuario(lerPermissoesDoFormulario());
+  } else {
+    await salvarEdicaoUsuario(lerPermissoesDoFormulario());
+  }
+}
+
+async function criarUsuario(papeisEscolhidos) {
+  const nome = $('editName').value.trim();
+  if (!nome) { showToast('Informe o nome completo.', 'error'); return; }
+
+  const usuarioSlug = slugUsername($('novoUsuarioUsuario').value);
+  if (usuarioSlug.length < 3) { showToast('O usuário de login precisa ter ao menos 3 caracteres.', 'error'); return; }
+
+  const senha = $('novoUsuarioSenha').value;
+  if (senha.length < SENHA_MINIMA) { showToast(`A senha precisa ter ao menos ${SENHA_MINIMA} caracteres.`, 'error'); return; }
+
+  const roleBase = $('novoUsuarioCargoBase').value;
+  const sistemas = Object.fromEntries(Object.entries(papeisEscolhidos).map(([chave, role]) => [chave, { acessar: role !== 'sem_acesso', funcao: role }]));
+
+  $('saveUserButton').disabled = true;
+  try {
+    const jaExiste = await getDoc(doc(db, 'usuarios', usuarioSlug));
+    if (jaExiste.exists()) {
+      showToast('Já existe um usuário com esse login. Escolha outro.', 'error');
+      return;
+    }
+
+    const payload = {
+      nome,
+      nomeCompleto: nome,
+      user: usuarioSlug,
+      senha,
+      email: $('editEmail').value.trim(),
+      cargo: $('editJob').value.trim(),
+      departamento: $('editDepartment').value.trim() || roleBase,
+      role: roleBase,
+      label: roleBase,
+      ativo: $('editActive').value === 'true',
+      administradorPortal: false,
+      observacao: '',
+      sistemas,
+      criadoEmIso: new Date().toISOString(),
+      criadoEmBr: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+      criadoEm: serverTimestamp(),
+      criadoPor: currentUser.uid,
+      criadoPorEmail: currentUser.email
+    };
+
+    await setDoc(doc(db, 'usuarios', usuarioSlug), payload);
+    await setDoc(doc(db, 'logsAcesso', `${Date.now()}_${usuarioSlug}`), {
+      usuarioAlteradoUid: usuarioSlug,
+      usuarioAlteradoEmail: payload.email,
+      administradorUid: currentUser.uid,
+      administradorEmail: currentUser.email,
+      alteracoes: { criacao: true, ...payload, senha: '••••••' },
+      criadoEm: serverTimestamp()
+    });
+
+    closeUserModal();
+    showToast(`Usuário "${usuarioSlug}" criado com sucesso.`, 'success');
+    await loadUsers();
+  } catch (error) {
+    console.error(error);
+    showToast('Não foi possível criar o usuário. Confira as regras do Firestore.', 'error');
+  } finally {
+    $('saveUserButton').disabled = false;
+  }
+}
+
+async function salvarEdicaoUsuario(papeisEscolhidos) {
   const id = $('editUserId').value;
   const existing = usersCache.find(item => item.id === id);
   if (!existing) return;
   const sistemas = {};
-  document.querySelectorAll('[data-permission-key]').forEach(select => {
-    const role = existing.administradorPortal ? 'administrador' : select.value;
-    sistemas[select.dataset.permissionKey] = { acessar: role !== 'sem_acesso', funcao: role };
+  Object.entries(papeisEscolhidos).forEach(([chave, valor]) => {
+    const role = existing.administradorPortal ? 'administrador' : valor;
+    sistemas[chave] = { acessar: role !== 'sem_acesso', funcao: role };
   });
 
   const payload = {
@@ -450,6 +567,7 @@ async function bootstrap() {
     showToast('E-mail atualizado com sucesso.', 'success');
   });
   $('refreshUsersButton').addEventListener('click', loadUsers);
+  $('newUserButton').addEventListener('click', openNewUserModal);
   $('userSearch').addEventListener('input', renderUsers);
   $('statusFilter').addEventListener('change', renderUsers);
   $('closeUserModal').addEventListener('click', closeUserModal);

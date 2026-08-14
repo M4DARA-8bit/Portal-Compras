@@ -94,8 +94,10 @@ const ROLE_PROFILES = {
 
 // Permissão padrão em cada sistema conforme o cargo gravado em `usuarios.role`.
 // Se o documento tiver um mapa `sistemas`, ele tem prioridade sobre esta tabela.
+// IMPORTANTE: esta tabela precisa ficar igual à do módulo Tarefas (mesmo
+// arquivo, mesma constante) — se ajustar aqui, ajuste lá também.
 const SISTEMAS_POR_ROLE = {
-  Compras:     { fornecedores: 'administrador', comparativo: 'administrador', contratos: 'administrador', tarefas: 'administrador' },
+  Compras:     { fornecedores: 'administrador', comparativo: 'administrador', contratos: 'administrador', tarefas: 'executor' },
   RH:          { fornecedores: 'aprovador',     comparativo: 'visualizador',  contratos: 'visualizador',  tarefas: 'solicitante' },
   SESMT:       { fornecedores: 'aprovador',     comparativo: 'visualizador',  contratos: 'visualizador',  tarefas: 'solicitante' },
   Juridico:    { fornecedores: 'aprovador',     comparativo: 'visualizador',  contratos: 'aprovador',     tarefas: 'solicitante' },
@@ -209,6 +211,7 @@ export const rotuloDoPapel = papel => ({
   solicitante: 'Solicitante',
   visualizador: 'Visualizador',
   editor: 'Editor',
+  executor: 'Executor',
   aprovador: 'Aprovador',
   administrador: 'Administrador'
 }[papel] || 'Sem acesso');
