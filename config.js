@@ -54,12 +54,18 @@ export const PORTAL_CONFIG = {
   // direto de imagem (termina em .png/.jpg/.webp etc., não a página onde
   // a imagem aparece). Pra pegar isso no Google Imagens: clique com o botão
   // direito na foto → "Copiar endereço da imagem".
+  // Os de baixo são do DiceBear (dicebear.com), estilo "Critters" — de graça,
+  // licença CC0 (domínio público, não precisa dar crédito nenhum). Cada
+  // "seed" no fim da URL gera uma criaturinha diferente — troque o texto
+  // depois de "seed=" pra gerar outras.
   avataresDisponiveis: [
-    "https://api.dicebear.com/9.x/thumbs/svg?seed=Compras1",
-    "https://api.dicebear.com/9.x/thumbs/svg?seed=Compras2",
-    "https://api.dicebear.com/9.x/thumbs/svg?seed=Compras3",
-    "https://api.dicebear.com/9.x/thumbs/svg?seed=Compras4",
-    "https://api.dicebear.com/9.x/thumbs/svg?seed=Compras5",
-    "https://api.dicebear.com/9.x/thumbs/svg?seed=Compras6"
+    "https://api.dicebear.com/10.x/critters/svg?seed=Compras1",
+    "https://api.dicebear.com/10.x/critters/svg?seed=Compras2",
+    "https://api.dicebear.com/10.x/critters/svg?seed=Compras3",
+    "https://api.dicebear.com/10.x/critters/svg?seed=Compras4",
+    "https://api.dicebear.com/10.x/critters/svg?seed=Compras5",
+    "https://api.dicebear.com/10.x/critters/svg?seed=Compras6",
+    "https://api.dicebear.com/10.x/critters/svg?seed=Compras7",
+    "https://api.dicebear.com/10.x/critters/svg?seed=Compras8"
   ]
 };
