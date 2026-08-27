@@ -130,5 +130,10 @@ export const PORTAL_CONFIG = {
     "https://api.dicebear.com/10.x/constellation/svg?seed=Compras7&tags=animation",
     "https://api.dicebear.com/10.x/constellation/svg?seed=Compras8&tags=animation",
 
+    // Personalizados — escolhidos à mão (barba, roupa, óculos, cor do cabelo etc.)
+    "https://api.dicebear.com/10.x/toon-head/svg?beardVariant=&bodyProbability=100&clothesVariant=shirt&eyebrowsVariant=neutral&eyesVariant=bow,happy,wide,wink&hairVariant=bun,sideComed&mouthVariant=laugh,sad,smile&rearHairVariant=longStraight,neckHigh,shoulderHigh&rearHairProbability=53&clothesColor=f97316,ec4899,b11f1f&hairColor=d6b370&seed=Felix",
+    "https://api.dicebear.com/10.x/miniavs/svg?hairVariant=long&headVariant=normal&mouthVariant=default&backgroundColor=fb98e6&bodyColor=3633e0,e05a33&hairColor=ad3a20,2c190c&skinColor=ffcb7e&glassesProbability=100&eyesVariant=normal&blushProbability=100&seed=Felix",
+    "https://api.dicebear.com/10.x/toon-head/svg?beardVariant=chin&beardProbability=100&clothesVariant=shirt&eyebrowsVariant=raised&eyesVariant=bow&hairVariant=sideComed&flip=horizontal&mouthVariant=smile&rearHairVariant=&backgroundColor=26edd6&clothesColor=000000&hairColor=2c1b18&skinColor=f1c3a5&strokeColor=&seed=4oz9uqzn",
+
   ]
 };
