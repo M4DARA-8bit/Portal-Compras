@@ -97,12 +97,12 @@ export const PORTAL_CONFIG = {
     // Thumbs — ANIMADO (o olho e a expressão se mexem sozinhos)
     "https://api.dicebear.com/10.x/thumbs/svg?seed=Compras1",
     "https://api.dicebear.com/10.x/thumbs/svg?seed=Compras2",
-    "https://api.dicebear.com/10.x/thumbs/svg?seed=Compras3"
+    "https://api.dicebear.com/10.x/thumbs/svg?seed=Compras3",
 
     // Voxel Art — personagens em voxel, estilo jogo 3D, ANIMADO
     "https://api.dicebear.com/10.x/voxel-art/svg?seed=Compras1&tags=animation",
     "https://api.dicebear.com/10.x/voxel-art/svg?seed=Compras2&tags=animation",
-    "https://api.dicebear.com/10.x/voxel-art/svg?seed=Compras3&tags=animation"
+    "https://api.dicebear.com/10.x/voxel-art/svg?seed=Compras3&tags=animation",
 
     // Voxel Bot — robôs em voxel, estilo jogo 3D, ANIMADO
     "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras1&tags=animation",
