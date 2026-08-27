@@ -113,6 +113,17 @@ export const PORTAL_CONFIG = {
     "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras3&tags=animation",
     "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras4&tags=animation",
     "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras5&tags=animation",
-    "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras6&tags=animation"
+    "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras6&tags=animation",
+
+    // Constellation — estrelas e constelações, ANIMADO
+    "https://api.dicebear.com/10.x/constellation/svg?seed=Compras1&tags=animation",
+    "https://api.dicebear.com/10.x/constellation/svg?seed=Compras2&tags=animation",
+    "https://api.dicebear.com/10.x/constellation/svg?seed=Compras3&tags=animation",
+    "https://api.dicebear.com/10.x/constellation/svg?seed=Compras4&tags=animation",
+    "https://api.dicebear.com/10.x/constellation/svg?seed=Compras5&tags=animation",
+    "https://api.dicebear.com/10.x/constellation/svg?seed=Compras6&tags=animation",
+    "https://api.dicebear.com/10.x/constellation/svg?seed=Compras7&tags=animation",
+    "https://api.dicebear.com/10.x/constellation/svg?seed=Compras8&tags=animation",
+
   ]
 };
