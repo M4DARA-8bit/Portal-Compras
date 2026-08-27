@@ -90,20 +90,29 @@ function dominantRole(profile) {
   return roleLabel(roles.sort((a, b) => ROLE_ORDER.indexOf(b) - ROLE_ORDER.indexOf(a))[0]);
 }
 
+function nomeExibicao(p) {
+  return p.apelido && p.apelido.trim() ? p.apelido.trim() : p.nomeCompleto;
+}
+
 function renderProfile() {
   const p = currentProfile;
   const avatar = initials(p.nomeCompleto);
-  ['sidebarAvatar','topAvatar','profileAvatar'].forEach(id => $(id).textContent = avatar);
-  $('sidebarName').textContent = p.nomeCompleto;
+  ['sidebarAvatar', 'topAvatar', 'profileAvatar'].forEach(id => {
+    if (p.fotoUrl) $(id).innerHTML = `<img src="${p.fotoUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`;
+    else $(id).textContent = avatar;
+  });
+  $('sidebarName').textContent = nomeExibicao(p);
   $('sidebarRole').textContent = p.cargo;
-  $('welcomeName').textContent = p.nomeCompleto.split(' ')[0];
+  $('welcomeName').textContent = nomeExibicao(p);
   $('heroDepartment').textContent = p.departamento;
   $('heroJob').textContent = p.cargo;
   $('mainRole').textContent = dominantRole(p);
   $('accountStatus').textContent = p.ativo ? 'Ativa' : 'Inativa';
-  $('profileName').textContent = p.nomeCompleto;
+  $('profileName').textContent = nomeExibicao(p);
   $('profileEmail').textContent = p.email;
   $('accountName').textContent = p.nomeCompleto;
+  $('accountApelido').textContent = p.apelido || 'Não definido';
+  $('editApelidoInput').value = p.apelido || '';
   $('accountEmail').textContent = p.email;
   $('accountUser').textContent = p.user || '—';
   $('accountJob').textContent = p.cargo;
@@ -113,6 +122,7 @@ function renderProfile() {
 
   renderSystems();
   renderMyPermissions();
+  renderSeletorDeFotos();
 }
 
 function renderSystems() {
@@ -177,6 +187,53 @@ function renderMyPermissions() {
       <span class="role-badge">${roleLabel(role)}</span>
     </div>`;
   }).join('');
+}
+
+/* ─── Apelido e foto de perfil ───────────────────────────────────────────── */
+
+function renderSeletorDeFotos() {
+  const grid = $('seletorDeFotos');
+  if (!grid) return;
+  const fotoAtual = currentProfile?.fotoUrl || '';
+  grid.innerHTML = (PORTAL_CONFIG.avataresDisponiveis || []).map(url => `
+    <button type="button" class="avatar-picker-item ${url === fotoAtual ? 'selecionado' : ''}" data-url="${url}">
+      <img src="${url}" alt="">
+    </button>
+  `).join('');
+
+  grid.querySelectorAll('.avatar-picker-item').forEach(botao => {
+    botao.addEventListener('click', () => salvarFotoDePerfil(botao.dataset.url));
+  });
+}
+
+async function salvarFotoDePerfil(url) {
+  try {
+    await setDoc(doc(db, currentProfile.colecao || 'usuarios', currentProfile.id), { fotoUrl: url }, { merge: true });
+    currentProfile.fotoUrl = url;
+    salvarPerfilSessao(currentProfile);
+    renderProfile();
+    showToast('Foto de perfil atualizada.', 'success');
+  } catch (error) {
+    console.error(error);
+    showToast('Não foi possível salvar a foto.', 'error');
+  }
+}
+
+async function salvarApelido() {
+  const novoApelido = $('editApelidoInput').value.trim().slice(0, 30);
+  $('saveApelidoButton').disabled = true;
+  try {
+    await setDoc(doc(db, currentProfile.colecao || 'usuarios', currentProfile.id), { apelido: novoApelido }, { merge: true });
+    currentProfile.apelido = novoApelido;
+    salvarPerfilSessao(currentProfile);
+    renderProfile();
+    showToast(novoApelido ? 'Apelido salvo.' : 'Apelido removido.', 'success');
+  } catch (error) {
+    console.error(error);
+    showToast('Não foi possível salvar o apelido.', 'error');
+  } finally {
+    $('saveApelidoButton').disabled = false;
+  }
 }
 
 /* ─── Alterar usuário e senha ────────────────────────────────────────────── */
@@ -278,7 +335,7 @@ function renderUsers() {
   $('usersTotal').textContent = `${filtered.length} usuário${filtered.length === 1 ? '' : 's'}`;
   $('usersList').innerHTML = filtered.map(user => `
     <article class="user-row">
-      <div class="user-identity"><div class="avatar">${initials(user.nomeCompleto)}</div><div><strong>${user.nomeCompleto}</strong><span>${user.email || 'E-mail não informado'}</span></div></div>
+      <div class="user-identity"><div class="avatar">${user.fotoUrl ? `<img src="${user.fotoUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">` : initials(user.nomeCompleto)}</div><div><strong>${user.nomeCompleto}${user.apelido ? ` (${user.apelido})` : ''}</strong><span>${user.email || 'E-mail não informado'}</span></div></div>
       <div class="user-meta"><strong>${user.cargo}</strong><span>${user.departamento}</span></div>
       <div><span class="status-pill ${user.ativo ? 'active' : 'inactive'}">${user.ativo ? 'Ativo' : 'Inativo'}</span></div>
       <button class="edit-user-button" data-user-id="${user.id}">Configurar</button>
@@ -550,8 +607,8 @@ async function handleAuthenticatedUser(perfil) {
   showPage('inicio');
   encerrarSplash();
   startSessionWatch(
-    remaining => $('sessionTimer').textContent = formatTime(remaining),
-    () => { showLogin(); showToast('Sessão encerrada após 2 horas.', 'error'); }
+    () => { $('sessionTimer').textContent = 'Sessão ativa'; },
+    () => { showLogin(); showToast('Sua sessão expirou — entre novamente.', 'error'); }
   );
 }
 
@@ -597,6 +654,7 @@ async function bootstrap() {
     showToast('E-mail atualizado com sucesso.', 'success');
   });
   $('refreshUsersButton').addEventListener('click', loadUsers);
+  $('saveApelidoButton').addEventListener('click', salvarApelido);
   $('newUserButton').addEventListener('click', openNewUserModal);
   $('userSearch').addEventListener('input', renderUsers);
   $('statusFilter').addEventListener('change', renderUsers);

@@ -71,7 +71,7 @@ export const COLLECTION_USERS_UID = 'usuariosUid';
 
 export const SESSION_KEY = 'ability_portal_session_started_at';
 export const PROFILE_KEY = 'ability_portal_local_profile';
-export const SESSION_DURATION_MS = 2 * 60 * 60 * 1000;
+export const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias — praticamente sem limite de uso contínuo
 
 export const DOMINIOS_CORPORATIVOS = ['abilitytecnologia.com.br'];
 export const EXIGIR_DOMINIO_CORPORATIVO = false; // true = só aceita os domínios acima
@@ -176,6 +176,8 @@ export function normalizarPerfil(id, dados = {}) {
     uid: dados.uid || `local-${usuario}`,
     nome: dados.nome || dados.nomeCompleto || base.label || usuario,
     nomeCompleto: dados.nomeCompleto || dados.nome || base.label || usuario,
+    apelido: dados.apelido || '',
+    fotoUrl: dados.fotoUrl || '',
     email: corporativo || emailSalvo,
     emailCorporativo: corporativo,
     emailLogin: usernameToEmail(usuario),

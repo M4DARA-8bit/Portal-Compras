@@ -48,7 +48,7 @@
 
         <button id="loginButton" class="primary-button full" type="submit">Entrar no portal</button>
         <p id="loginStatus" class="form-status"></p>
-        <div class="security-note">🔒 A sessão expira automaticamente após 2 horas.</div>
+        <div class="security-note">🔒 Sua sessão fica ativa enquanto você usa o sistema.</div>
       </form>
     </div>
   </section>
@@ -81,7 +81,7 @@
           <h2 id="pageTitle">Início</h2>
         </div>
         <div class="topbar-actions">
-          <div class="session-chip"><span>◷</span><span id="sessionTimer">02:00:00</span></div>
+          <div class="session-chip"><span>◷</span><span id="sessionTimer">Sessão ativa</span></div>
           <div id="topAvatar" class="avatar">U</div>
         </div>
       </header>
@@ -122,6 +122,14 @@
             </div>
             <div class="profile-data">
               <div><span>Nome completo</span><strong id="accountName">—</strong></div>
+              <div><span>Apelido</span><strong id="accountApelido">—</strong></div>
+              <div style="flex-direction:column;align-items:stretch;gap:8px">
+                <span>Editar apelido (como o sistema vai te chamar)</span>
+                <div style="display:flex;gap:8px">
+                  <input id="editApelidoInput" placeholder="Ex.: Dan" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid var(--line)">
+                  <button id="saveApelidoButton" class="secondary-button" type="button">Salvar</button>
+                </div>
+              </div>
               <div><span>E-mail</span><strong id="accountEmail">—</strong></div>
               <div><span>Usuário de acesso</span><strong id="accountUser">—</strong></div>
               <div><span>Alterar e-mail</span><button id="changeEmailButton" class="secondary-button" type="button">Atualizar meu e-mail</button></div>
@@ -130,6 +138,12 @@
               <div><span>Departamento</span><strong id="accountDepartment">—</strong></div>
               <div><span>Status</span><strong id="accountActive">—</strong></div>
             </div>
+          </article>
+
+          <article class="card">
+            <div class="card-heading"><div><span class="eyebrow">APARÊNCIA</span><h2>Escolha sua foto de perfil</h2></div></div>
+            <p style="font-size:12px;color:var(--muted);margin:-8px 0 14px">Clique numa das fotos abaixo pra usar no lugar das suas iniciais.</p>
+            <div id="seletorDeFotos" class="avatar-picker-grid"></div>
           </article>
 
           <article class="card">
