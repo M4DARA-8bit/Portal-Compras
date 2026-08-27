@@ -50,22 +50,53 @@ export const PORTAL_CONFIG = {
   },
 
   // Lista de fotos que aparecem em "Minha conta" pra pessoa escolher como
-  // avatar. Troque as URLs pelas que você quiser — precisa ser um link
-  // direto de imagem (termina em .png/.jpg/.webp etc., não a página onde
-  // a imagem aparece). Pra pegar isso no Google Imagens: clique com o botão
-  // direito na foto → "Copiar endereço da imagem".
-  // Os de baixo são do DiceBear (dicebear.com), estilo "Critters" — de graça,
-  // licença CC0 (domínio público, não precisa dar crédito nenhum). Cada
-  // "seed" no fim da URL gera uma criaturinha diferente — troque o texto
-  // depois de "seed=" pra gerar outras.
+  // avatar. Pode ser qualquer link direto de imagem (termina em
+  // .png/.jpg/.webp/.svg, não a página onde a imagem aparece — no Google
+  // Imagens: botão direito na foto → "Copiar endereço da imagem").
+  //
+  // Por enquanto são todas do DiceBear (dicebear.com) — de graça, licença
+  // CC0/livre, sem precisar dar crédito. Cada "seed" no fim da URL gera uma
+  // versão diferente daquele estilo; troque o texto depois de "seed=" pra
+  // gerar outras variações, ou adicione mais linhas copiando o padrão.
   avataresDisponiveis: [
+    // Critters — criaturinhas fofas com chifre/orelha/antena
     "https://api.dicebear.com/10.x/critters/svg?seed=Compras1",
     "https://api.dicebear.com/10.x/critters/svg?seed=Compras2",
     "https://api.dicebear.com/10.x/critters/svg?seed=Compras3",
-    "https://api.dicebear.com/10.x/critters/svg?seed=Compras4",
-    "https://api.dicebear.com/10.x/critters/svg?seed=Compras5",
-    "https://api.dicebear.com/10.x/critters/svg?seed=Compras6",
-    "https://api.dicebear.com/10.x/critters/svg?seed=Compras7",
-    "https://api.dicebear.com/10.x/critters/svg?seed=Compras8"
+
+    // Bottts — robôs engraçados
+    "https://api.dicebear.com/10.x/bottts/svg?seed=Compras1",
+    "https://api.dicebear.com/10.x/bottts/svg?seed=Compras2",
+    "https://api.dicebear.com/10.x/bottts/svg?seed=Compras3",
+
+    // Fun Emoji — carinhas de emoji
+    "https://api.dicebear.com/10.x/fun-emoji/svg?seed=Compras1",
+    "https://api.dicebear.com/10.x/fun-emoji/svg?seed=Compras2",
+    "https://api.dicebear.com/10.x/fun-emoji/svg?seed=Compras3",
+
+    // Croodles — rabiscados à mão, bem informais
+    "https://api.dicebear.com/10.x/croodles/svg?seed=Compras1",
+    "https://api.dicebear.com/10.x/croodles/svg?seed=Compras2",
+    "https://api.dicebear.com/10.x/croodles/svg?seed=Compras3",
+
+    // Big Smile — carinhas sorrindo bem largo
+    "https://api.dicebear.com/10.x/big-smile/svg?seed=Compras1",
+    "https://api.dicebear.com/10.x/big-smile/svg?seed=Compras2",
+    "https://api.dicebear.com/10.x/big-smile/svg?seed=Compras3",
+
+    // Pixel Art — personagens em pixel, estilo jogo antigo
+    "https://api.dicebear.com/10.x/pixel-art/svg?seed=Compras1",
+    "https://api.dicebear.com/10.x/pixel-art/svg?seed=Compras2",
+    "https://api.dicebear.com/10.x/pixel-art/svg?seed=Compras3",
+
+    // Notionists — pessoas ilustradas, estilo bem moderno
+    "https://api.dicebear.com/10.x/notionists/svg?seed=Compras1",
+    "https://api.dicebear.com/10.x/notionists/svg?seed=Compras2",
+    "https://api.dicebear.com/10.x/notionists/svg?seed=Compras3",
+
+    // Thumbs — ANIMADO (o olho e a expressão se mexem sozinhos)
+    "https://api.dicebear.com/10.x/thumbs/svg?seed=Compras1",
+    "https://api.dicebear.com/10.x/thumbs/svg?seed=Compras2",
+    "https://api.dicebear.com/10.x/thumbs/svg?seed=Compras3"
   ]
 };
