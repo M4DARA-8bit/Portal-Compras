@@ -106,6 +106,9 @@ export const PORTAL_CONFIG = {
     "https://api.dicebear.com/10.x/voxel-art/svg?seed=Compras4&tags=animation",
     "https://api.dicebear.com/10.x/voxel-art/svg?seed=Compras5&tags=animation",
     "https://api.dicebear.com/10.x/voxel-art/svg?seed=Compras6&tags=animation",
+    "https://api.dicebear.com/10.x/voxel-art/svg?seed=Compras7&tags=animation",
+    "https://api.dicebear.com/10.x/voxel-art/svg?seed=Compras8&tags=animation",
+
 
     // Voxel Bot — robôs em voxel, estilo jogo 3D, ANIMADO
     "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras1&tags=animation",
@@ -114,6 +117,8 @@ export const PORTAL_CONFIG = {
     "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras4&tags=animation",
     "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras5&tags=animation",
     "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras6&tags=animation",
+    "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras7&tags=animation",
+    "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras8&tags=animation",
 
     // Constellation — estrelas e constelações, ANIMADO
     "https://api.dicebear.com/10.x/constellation/svg?seed=Compras1&tags=animation",
