@@ -103,10 +103,16 @@ export const PORTAL_CONFIG = {
     "https://api.dicebear.com/10.x/voxel-art/svg?seed=Compras1&tags=animation",
     "https://api.dicebear.com/10.x/voxel-art/svg?seed=Compras2&tags=animation",
     "https://api.dicebear.com/10.x/voxel-art/svg?seed=Compras3&tags=animation",
+    "https://api.dicebear.com/10.x/voxel-art/svg?seed=Compras4&tags=animation",
+    "https://api.dicebear.com/10.x/voxel-art/svg?seed=Compras5&tags=animation",
+    "https://api.dicebear.com/10.x/voxel-art/svg?seed=Compras6&tags=animation",
 
     // Voxel Bot — robôs em voxel, estilo jogo 3D, ANIMADO
     "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras1&tags=animation",
     "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras2&tags=animation",
-    "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras3&tags=animation"
+    "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras3&tags=animation",
+    "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras4&tags=animation",
+    "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras5&tags=animation",
+    "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras6&tags=animation"
   ]
 };
