@@ -120,20 +120,11 @@ export const PORTAL_CONFIG = {
     "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras7&tags=animation",
     "https://api.dicebear.com/10.x/voxel-bot/svg?seed=Compras8&tags=animation",
 
-    // Constellation — estrelas e constelações, ANIMADO
-    "https://api.dicebear.com/10.x/constellation/svg?seed=Compras1&tags=animation",
-    "https://api.dicebear.com/10.x/constellation/svg?seed=Compras2&tags=animation",
-    "https://api.dicebear.com/10.x/constellation/svg?seed=Compras3&tags=animation",
-    "https://api.dicebear.com/10.x/constellation/svg?seed=Compras4&tags=animation",
-    "https://api.dicebear.com/10.x/constellation/svg?seed=Compras5&tags=animation",
-    "https://api.dicebear.com/10.x/constellation/svg?seed=Compras6&tags=animation",
-    "https://api.dicebear.com/10.x/constellation/svg?seed=Compras7&tags=animation",
-    "https://api.dicebear.com/10.x/constellation/svg?seed=Compras8&tags=animation",
-
     // Personalizados — escolhidos à mão (barba, roupa, óculos, cor do cabelo etc.)
     "https://api.dicebear.com/10.x/toon-head/svg?beardVariant=&bodyProbability=100&clothesVariant=shirt&eyebrowsVariant=neutral&eyesVariant=bow,happy,wide,wink&hairVariant=bun,sideComed&mouthVariant=laugh,sad,smile&rearHairVariant=longStraight,neckHigh,shoulderHigh&rearHairProbability=53&clothesColor=f97316,ec4899,b11f1f&hairColor=d6b370&seed=Felix",
     "https://api.dicebear.com/10.x/miniavs/svg?hairVariant=long&headVariant=normal&mouthVariant=default&backgroundColor=fb98e6&bodyColor=3633e0,e05a33&hairColor=ad3a20,2c190c&skinColor=ffcb7e&glassesProbability=100&eyesVariant=normal&blushProbability=100&seed=Felix",
     "https://api.dicebear.com/10.x/toon-head/svg?beardVariant=chin&beardProbability=100&clothesVariant=shirt&eyebrowsVariant=raised&eyesVariant=bow&hairVariant=sideComed&flip=horizontal&mouthVariant=smile&rearHairVariant=&backgroundColor=26edd6&clothesColor=000000&hairColor=2c1b18&skinColor=f1c3a5&strokeColor=&seed=4oz9uqzn",
-
+    "https://api.dicebear.com/10.x/toon-head/svg?beardVariant=&mouthVariant=laugh&rearHairVariant=shoulderHigh&hairVariant=sideComed&eyesVariant=wink&eyebrowsVariant=raised&clothesVariant=openJacket&backgroundColor=d18be4&clothesColor=e8e9e6&hairColor=2c1b18&skinColor=b98e6a&seed=Felix",
+    "https://api.dicebear.com/10.x/avataaars/svg?accessoriesVariant=&clothesVariant=collarAndSweater&clothesGraphicVariant=&eyebrowsVariant=defaultNatural&eyesVariant=squint&facialHairVariant=&facialHairProbability=100&mouthVariant=smile&topVariant=shortFlat&clothesColor=262e33&facialHairColor=&hairColor=2c1b18&backgroundColor=d0cbd2&skinColor=ffdbb4&hatColor=&seed=Felix",
   ]
 };
